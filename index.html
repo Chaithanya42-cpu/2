@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Dynamic Journey Performance Report & Export</title>
+    <title>Precision Flow Performance Report</title>
     <style>
         body { font-family: 'Segoe UI', Arial, sans-serif; margin: 20px; background-color: #f4f7f6; font-size: 13px; }
         .container { max-width: 1400px; margin: auto; background: white; padding: 20px; border-radius: 5px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
@@ -10,25 +10,23 @@
         .btn-group { margin-bottom: 20px; }
         button { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 10px; }
         .btn-primary { background-color: #007bff; color: white; }
-        .btn-primary:hover { background-color: #0056b3; }
-        .btn-success { background-color: #28a745; color: white; display: none; } /* Hidden until data exists */
-        .btn-success:hover { background-color: #218838; }
+        .btn-success { background-color: #28a745; color: white; display: none; }
         .week-sect { margin-top: 40px; }
-        h2 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 5px; text-transform: uppercase; }
+        h2 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 5px; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #fff; }
         th, td { border: 1px solid #dee2e6; padding: 5px 8px; text-align: left; }
-        th { background-color: #e9ecef; font-weight: 600; text-align: center; }
+        th { background-color: #e2efda; font-weight: 600; text-align: center; }
         .journey-row-first { border-top: 2px solid #333; }
         .total-row { background-color: #f8f9fa; font-weight: bold; border-bottom: 2px solid #adb5bd; }
         .num { text-align: right; font-family: 'Courier New', monospace; }
-        .contribution-cell { background-color: #fdfdfe; font-weight: bold; text-align: center; color: #495057; }
+        .contribution-cell { background-color: #fdfdfe; font-weight: bold; text-align: center; color: #495057; border-right: 2px solid #adb5bd; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Weekly Flow Reporter (Dynamic Variations)</h1>
-    <p>Paste WebEngage report with headers. Tool groups by Journey ID and auto-detects EN/AR variations.</p>
+    <h1>Weekly Precision Flow Reporter</h1>
+    <p>Paste WebEngage daily data with headers. Tool maps variations based on Journey ID and specific Campaign Name suffixes.</p>
     <textarea id="dataInput" placeholder="Day	Campaign Name	Channel	Journey Name	Journey ID	..."></textarea>
     
     <div class="btn-group">
@@ -41,11 +39,33 @@
 
 <script>
 const WA_RATE = 0.16;
-let globalReportData = null; // Store for CSV export
+let globalReportData = null;
 
-function detectLang(journeyName, campaignName) {
-    const combined = (journeyName + " " + campaignName).toLowerCase();
-    if (combined.includes('ar') || combined.includes('arabic')) return 'AR';
+function detectLangPrecision(jName, cName) {
+    const j = jName.toLowerCase();
+    const c = cName.toLowerCase();
+
+    // Priority 1: Specific Campaign Overrides for Confirmed/Shipped
+    if (j.includes('order confirmed') || j.includes('order confirmation')) {
+        if (c.includes('_ar')) return 'AR';
+        if (c.includes('_1')) return 'EN';
+    }
+    
+    if (j.includes('order shipped')) {
+        if (c.includes('_ar')) return 'AR';
+        // If it's the base name 'kl_order_shipped' without '_ar', it's EN
+        return 'EN'; 
+    }
+
+    // Priority 2: Keyword markers in Journey Name
+    if (j.includes('_ar') || j.endsWith('_ar') || j.includes('_arabic')) return 'AR';
+    if (j.includes('_en') || j.endsWith('_en') || j.includes('_english')) return 'EN';
+
+    // Priority 3: Suffixes in Campaign Name
+    if (c.includes('_ar') || c.endsWith('_ar')) return 'AR';
+    if (c.includes('_en') || c.includes('_1')) return 'EN';
+
+    // Default Fallback
     return 'EN';
 }
 
@@ -68,30 +88,29 @@ function process() {
     const report = {};
 
     dataRows.forEach(row => {
-        const journeyId = row[col.jId];
-        if (!journeyId || journeyId === 'BS') return;
+        const jId = row[col.jId];
+        if (!jId || jId === 'BS') return;
 
-        const dayStr = row[col.day] ? row[col.day].split('-')[0] : "1";
-        const d = parseInt(dayStr);
+        const d = parseInt(row[col.day] ? row[col.day].split('-')[0] : "1");
         let wk = 1;
         if (d > 7 && d <= 14) wk = 2; else if (d > 14 && d <= 21) wk = 3; else if (d > 21) wk = 4;
 
         if (!report[wk]) report[wk] = {};
-        if (!report[wk][journeyId]) {
-            report[wk][journeyId] = { name: row[col.jName], variations: {} };
+        if (!report[wk][jId]) {
+            report[wk][jId] = { name: row[col.jName], variations: {} };
         }
 
-        const lang = detectLang(row[col.jName], row[col.camp]);
+        const lang = detectLangPrecision(row[col.jName], row[col.camp]);
         const channel = row[col.chan];
         const vKey = `${channel}-${lang}`;
 
-        if (!report[wk][journeyId].variations[vKey]) {
-            report[wk][journeyId].variations[vKey] = {
+        if (!report[wk][jId].variations[vKey]) {
+            report[wk][jId].variations[vKey] = {
                 label: vKey, sent: 0, deliv: 0, open: 0, click: 0, orders: 0, rev: 0
             };
         }
 
-        const v = report[wk][journeyId].variations[vKey];
+        const v = report[wk][jId].variations[vKey];
         v.sent += parseInt(row[col.sent]) || 0;
         v.deliv += parseInt(row[col.deliv]) || 0;
         v.open += parseInt(row[col.open]) || 0;
@@ -125,7 +144,7 @@ function render(report) {
 
         Object.keys(report[wk]).forEach(jId => {
             const journey = report[wk][jId];
-            const vars = Object.values(journey.variations);
+            const vars = Object.values(journey.variations).sort((a,b) => a.label.localeCompare(b.label));
             let jOrders = 0, jRev = 0, jDeliv = 0;
 
             vars.forEach((v, idx) => {
@@ -144,8 +163,8 @@ function render(report) {
                     <td class="num">${v.open}</td>
                     <td class="num">${v.click}</td>
                     <td class="num">${v.orders}</td>
-                    <td class="num">${v.rev.toFixed(2)}</td>
-                    <td class="gray-col"></td>
+                    <td class="num">${v.rev.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                    <td></td>
                     <td class="num">${aov.toFixed(2)}</td>
                     <td class="num">${cr.toFixed(2)}%</td>
                 </tr>`;
@@ -155,7 +174,7 @@ function render(report) {
             html += `<tr class="total-row">
                 <td colspan="8" style="text-align:right">Total</td>
                 <td class="num">${jOrders}</td>
-                <td class="num">${jRev.toFixed(2)}</td>
+                <td class="num">${jRev.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
                 <td class="contribution-cell">${contrib.toFixed(1)}%</td>
                 <td colspan="2"></td>
             </tr>`;
@@ -167,38 +186,29 @@ function render(report) {
 
 function downloadCSV() {
     if (!globalReportData) return;
-    
     let csv = "Week,Name,Journey ID,Channel,Sent,Delivered,Spends (AED),Opened,Clicked,Total Orders,Revenue (AED),% Contribution,AOV,CR%\n";
-    
     Object.keys(globalReportData).sort().forEach(wk => {
         let wkRev = 0;
         Object.values(globalReportData[wk]).forEach(j => Object.values(j.variations).forEach(v => wkRev += v.rev));
-
         Object.keys(globalReportData[wk]).forEach(jId => {
             const journey = globalReportData[wk][jId];
-            const vars = Object.values(journey.variations);
-            let jOrders = 0, jRev = 0, jDeliv = 0;
-
+            const vars = Object.values(journey.variations).sort((a,b) => a.label.localeCompare(b.label));
+            let jOrders = 0, jRev = 0;
             vars.forEach(v => {
                 const spends = v.label.includes('WhatsApp') ? (v.deliv * WA_RATE) : 0;
                 const aov = v.orders > 0 ? (v.rev / v.orders) : 0;
                 const cr = v.deliv > 0 ? (v.orders / v.deliv) * 100 : 0;
-                jOrders += v.orders; jRev += v.rev; jDeliv += v.deliv;
-
+                jOrders += v.orders; jRev += v.rev;
                 csv += `${wk},"${journey.name}",${jId},${v.label},${v.sent},${v.deliv},${spends.toFixed(2)},${v.open},${v.click},${v.orders},${v.rev.toFixed(2)},,${aov.toFixed(2)},${cr.toFixed(2)}%\n`;
             });
-
             const contrib = wkRev > 0 ? (jRev / wkRev * 100) : 0;
-            csv += `${wk},TOTAL FOR JOURNEY,,Total,,,,,,${jOrders},${jRev.toFixed(2)},${contrib.toFixed(1)}%,,\n`;
+            csv += `${wk},TOTAL,,,,,,,,,${jOrders},${jRev.toFixed(2)},${contrib.toFixed(1)}%,,\n`;
         });
     });
-
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", "Weekly_Flow_Report.csv");
-    link.style.visibility = 'hidden';
+    link.setAttribute("href", URL.createObjectURL(blob));
+    link.setAttribute("download", "Precision_Weekly_Flow_Report.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
