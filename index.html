@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dynamic Journey Performance Report & Export</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 20px; background-color: #f4f7f6; font-size: 13px; }
+        .container { max-width: 1400px; margin: auto; background: white; padding: 20px; border-radius: 5px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        textarea { width: 100%; height: 150px; margin: 10px 0; font-family: monospace; border: 1px solid #ccc; padding: 10px; box-sizing: border-box; }
+        .btn-group { margin-bottom: 20px; }
+        button { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 10px; }
+        .btn-primary { background-color: #007bff; color: white; }
+        .btn-primary:hover { background-color: #0056b3; }
+        .btn-success { background-color: #28a745; color: white; display: none; } /* Hidden until data exists */
+        .btn-success:hover { background-color: #218838; }
+        .week-sect { margin-top: 40px; }
+        h2 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 5px; text-transform: uppercase; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #fff; }
+        th, td { border: 1px solid #dee2e6; padding: 5px 8px; text-align: left; }
+        th { background-color: #e9ecef; font-weight: 600; text-align: center; }
+        .journey-row-first { border-top: 2px solid #333; }
+        .total-row { background-color: #f8f9fa; font-weight: bold; border-bottom: 2px solid #adb5bd; }
+        .num { text-align: right; font-family: 'Courier New', monospace; }
+        .contribution-cell { background-color: #fdfdfe; font-weight: bold; text-align: center; color: #495057; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Weekly Flow Reporter (Dynamic Variations)</h1>
+    <p>Paste WebEngage report with headers. Tool groups by Journey ID and auto-detects EN/AR variations.</p>
+    <textarea id="dataInput" placeholder="Day	Campaign Name	Channel	Journey Name	Journey ID	..."></textarea>
+    
+    <div class="btn-group">
+        <button class="btn-primary" onclick="process()">Generate Report</button>
+        <button id="dlBtn" class="btn-success" onclick="downloadCSV()">Download as CSV</button>
+    </div>
+
+    <div id="output"></div>
+</div>
+
+<script>
+const WA_RATE = 0.16;
+let globalReportData = null; // Store for CSV export
+
+function detectLang(journeyName, campaignName) {
+    const combined = (journeyName + " " + campaignName).toLowerCase();
+    if (combined.includes('ar') || combined.includes('arabic')) return 'AR';
+    return 'EN';
+}
+
+function process() {
+    const input = document.getElementById('dataInput').value.trim();
+    if (!input) return;
+
+    const rows = input.split('\n').map(r => r.split('\t'));
+    const headers = rows[0].map(h => h.trim());
+    const dataRows = rows.slice(1);
+
+    const getIdx = (name) => headers.indexOf(name);
+    const col = {
+        day: getIdx('Day'), camp: getIdx('Campaign Name'), chan: getIdx('Channel'),
+        jName: getIdx('Journey Name'), jId: getIdx('Journey ID'), sent: getIdx('Sent'),
+        deliv: getIdx('Delivered'), open: getIdx('Unique Impressions'), click: getIdx('Unique Clicks'),
+        orders: getIdx('Unique Click-Through Conversions'), rev: getIdx('Click-Through Revenue (AED)')
+    };
+
+    const report = {};
+
+    dataRows.forEach(row => {
+        const journeyId = row[col.jId];
+        if (!journeyId || journeyId === 'BS') return;
+
+        const dayStr = row[col.day] ? row[col.day].split('-')[0] : "1";
+        const d = parseInt(dayStr);
+        let wk = 1;
+        if (d > 7 && d <= 14) wk = 2; else if (d > 14 && d <= 21) wk = 3; else if (d > 21) wk = 4;
+
+        if (!report[wk]) report[wk] = {};
+        if (!report[wk][journeyId]) {
+            report[wk][journeyId] = { name: row[col.jName], variations: {} };
+        }
+
+        const lang = detectLang(row[col.jName], row[col.camp]);
+        const channel = row[col.chan];
+        const vKey = `${channel}-${lang}`;
+
+        if (!report[wk][journeyId].variations[vKey]) {
+            report[wk][journeyId].variations[vKey] = {
+                label: vKey, sent: 0, deliv: 0, open: 0, click: 0, orders: 0, rev: 0
+            };
+        }
+
+        const v = report[wk][journeyId].variations[vKey];
+        v.sent += parseInt(row[col.sent]) || 0;
+        v.deliv += parseInt(row[col.deliv]) || 0;
+        v.open += parseInt(row[col.open]) || 0;
+        v.click += parseInt(row[col.click]) || 0;
+        v.orders += parseInt(row[col.orders]) || 0;
+        v.rev += parseFloat(row[col.rev]) || 0;
+    });
+
+    globalReportData = report;
+    document.getElementById('dlBtn').style.display = 'inline-block';
+    render(report);
+}
+
+function render(report) {
+    const out = document.getElementById('output');
+    out.innerHTML = '';
+
+    Object.keys(report).sort().forEach(wk => {
+        let wkRev = 0;
+        Object.values(report[wk]).forEach(j => Object.values(j.variations).forEach(v => wkRev += v.rev));
+
+        let html = `<div class="week-sect"><h2>Week ${wk} Performance</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th><th>Journey ID</th><th>Channel</th><th>Sent</th><th>Delivered</th>
+                    <th>Spends (AED)</th><th>Opened</th><th>Clicked</th><th>Total Orders</th>
+                    <th>Revenue (AED)</th><th>% Contrib</th><th>AOV</th><th>CR%</th>
+                </tr>
+            </thead><tbody>`;
+
+        Object.keys(report[wk]).forEach(jId => {
+            const journey = report[wk][jId];
+            const vars = Object.values(journey.variations);
+            let jOrders = 0, jRev = 0, jDeliv = 0;
+
+            vars.forEach((v, idx) => {
+                const spends = v.label.includes('WhatsApp') ? (v.deliv * WA_RATE) : 0;
+                const aov = v.orders > 0 ? (v.rev / v.orders) : 0;
+                const cr = v.deliv > 0 ? (v.orders / v.deliv) * 100 : 0;
+                jOrders += v.orders; jRev += v.rev; jDeliv += v.deliv;
+
+                html += `<tr class="${idx === 0 ? 'journey-row-first' : ''}">
+                    <td>${idx === 0 ? journey.name : ''}</td>
+                    <td>${idx === 0 ? jId : ''}</td>
+                    <td>${v.label}</td>
+                    <td class="num">${v.sent}</td>
+                    <td class="num">${v.deliv}</td>
+                    <td class="num">${spends.toFixed(2)}</td>
+                    <td class="num">${v.open}</td>
+                    <td class="num">${v.click}</td>
+                    <td class="num">${v.orders}</td>
+                    <td class="num">${v.rev.toFixed(2)}</td>
+                    <td class="gray-col"></td>
+                    <td class="num">${aov.toFixed(2)}</td>
+                    <td class="num">${cr.toFixed(2)}%</td>
+                </tr>`;
+            });
+
+            const contrib = wkRev > 0 ? (jRev / wkRev * 100) : 0;
+            html += `<tr class="total-row">
+                <td colspan="8" style="text-align:right">Total</td>
+                <td class="num">${jOrders}</td>
+                <td class="num">${jRev.toFixed(2)}</td>
+                <td class="contribution-cell">${contrib.toFixed(1)}%</td>
+                <td colspan="2"></td>
+            </tr>`;
+        });
+        html += `</tbody></table></div>`;
+        out.innerHTML += html;
+    });
+}
+
+function downloadCSV() {
+    if (!globalReportData) return;
+    
+    let csv = "Week,Name,Journey ID,Channel,Sent,Delivered,Spends (AED),Opened,Clicked,Total Orders,Revenue (AED),% Contribution,AOV,CR%\n";
+    
+    Object.keys(globalReportData).sort().forEach(wk => {
+        let wkRev = 0;
+        Object.values(globalReportData[wk]).forEach(j => Object.values(j.variations).forEach(v => wkRev += v.rev));
+
+        Object.keys(globalReportData[wk]).forEach(jId => {
+            const journey = globalReportData[wk][jId];
+            const vars = Object.values(journey.variations);
+            let jOrders = 0, jRev = 0, jDeliv = 0;
+
+            vars.forEach(v => {
+                const spends = v.label.includes('WhatsApp') ? (v.deliv * WA_RATE) : 0;
+                const aov = v.orders > 0 ? (v.rev / v.orders) : 0;
+                const cr = v.deliv > 0 ? (v.orders / v.deliv) * 100 : 0;
+                jOrders += v.orders; jRev += v.rev; jDeliv += v.deliv;
+
+                csv += `${wk},"${journey.name}",${jId},${v.label},${v.sent},${v.deliv},${spends.toFixed(2)},${v.open},${v.click},${v.orders},${v.rev.toFixed(2)},,${aov.toFixed(2)},${cr.toFixed(2)}%\n`;
+            });
+
+            const contrib = wkRev > 0 ? (jRev / wkRev * 100) : 0;
+            csv += `${wk},TOTAL FOR JOURNEY,,Total,,,,,,${jOrders},${jRev.toFixed(2)},${contrib.toFixed(1)}%,,\n`;
+        });
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", "Weekly_Flow_Report.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+</script>
+</body>
+</html>
