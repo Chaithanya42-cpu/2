@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebEngage Flow Data Merger (Consistent Date Fix)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen p-4 md:p-8 font-sans text-slate-800">
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-slate-900 mb-2">Data Entries Merger v5</h1>
+            <p class="text-slate-600 font-medium text-sm">Fix: Force Consistent DD-MM-YYYY Format & Smart Entry Matching</p>
+        </header>
+
+        <div class="mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <label class="block text-sm font-bold text-slate-700 mb-2">Step 1: Journey Name to ID Mapping</label>
+            <textarea id="mappingData" class="w-full h-32 p-4 text-sm bg-slate-50 border border-slate-300 rounded-xl font-mono" placeholder="KL_ABC_En	4l32e5d"></textarea>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <label class="block text-sm font-bold text-slate-700 mb-2">Step 2: Performance Data (Main Sheet)</label>
+                <textarea id="mainData" class="w-full h-64 p-4 text-sm bg-slate-50 border border-slate-300 rounded-xl" placeholder="Paste data containing period_start and flow_name..."></textarea>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <label class="block text-sm font-bold text-slate-700 mb-2">Step 3: Entries Data (Horizontal Sheet)</label>
+                <textarea id="entriesData" class="w-full h-64 p-4 text-sm bg-slate-50 border border-slate-300 rounded-xl" placeholder="Paste horizontal sheet with dates 01-Jan, 13-Jan, etc..."></textarea>
+            </div>
+        </div>
+
+        <div class="flex flex-col items-center gap-4">
+            <button onclick="processData()" class="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-transform active:scale-95">
+                Process and Download Updated CSV
+            </button>
+            <div id="status" class="hidden text-sm font-medium p-3 rounded-lg"></div>
+        </div>
+    </div>
+
+    <script>
+        function smartParse(text) {
+            if (!text || !text.trim()) return [];
+            const rows = [];
+            let currentRow = [];
+            let currentField = '';
+            let inQuotes = false;
+            const delimiter = text.includes('\t') ? '\t' : ',';
+
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const nextChar = text[i + 1];
+                if (inQuotes) {
+                    if (char === '"' && nextChar === '"') { currentField += '"'; i++; }
+                    else if (char === '"') { inQuotes = false; }
+                    else { currentField += char; }
+                } else {
+                    if (char === '"') { inQuotes = true; }
+                    else if (char === delimiter) { currentRow.push(currentField.trim()); currentField = ''; }
+                    else if (char === '\r' || char === '\n') {
+                        currentRow.push(currentField.trim());
+                        if (currentRow.length > 0 && currentRow.some(f => f !== '')) rows.push(currentRow);
+                        currentRow = []; currentField = '';
+                        if (char === '\r' && nextChar === '\n') i++;
+                    } else { currentField += char; }
+                }
+            }
+            if (currentRow.length > 0 || currentField !== '') {
+                currentRow.push(currentField.trim());
+                rows.push(currentRow);
+            }
+            return rows;
+        }
+
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+        function getDetailedDate(dateStr, prefFormat) {
+            if (!dateStr) return null;
+            const parts = dateStr.split(/[-/ \.]/).filter(p => p !== "");
+            if (parts.length < 2) return null;
+
+            let day, monthIdx, year = parts[2] || "2026";
+            if (year.length === 2) year = "20" + year;
+
+            if (isNaN(parts[1]) || isNaN(parts[0])) {
+                const p0IsNum = !isNaN(parts[0]);
+                const monthPart = p0IsNum ? parts[1] : parts[0];
+                day = parseInt(p0IsNum ? parts[0] : parts[1]);
+                let m = monthPart.substring(0, 3).toLowerCase();
+                monthIdx = months.findIndex(name => name.toLowerCase() === m);
+                if (monthIdx === -1 || isNaN(day)) return null;
+            } else {
+                const p0 = parseInt(parts[0]);
+                const p1 = parseInt(parts[1]);
+                if (p1 > 12) { monthIdx = p0 - 1; day = p1; }
+                else if (p0 > 12) { day = p0; monthIdx = p1 - 1; }
+                else {
+                    if (prefFormat === "MD") { monthIdx = p0 - 1; day = p1; }
+                    else { day = p0; monthIdx = p1 - 1; }
+                }
+            }
+
+            if (monthIdx < 0 || monthIdx > 11 || day < 1 || day > 31) return null;
+            
+            return {
+                day: day,
+                monthIdx: monthIdx,
+                year: year,
+                key: `${day < 10 ? '0' + day : day}-${months[monthIdx]}`,
+                formatted: `${day < 10 ? '0' + day : day}-${(monthIdx + 1) < 10 ? '0' + (monthIdx + 1) : (monthIdx + 1)}-${year}`
+            };
+        }
+
+        function processData() {
+            const mapTxt = document.getElementById('mappingData').value;
+            const mainTxt = document.getElementById('mainData').value;
+            const entriesTxt = document.getElementById('entriesData').value;
+
+            try {
+                const mapRows = smartParse(mapTxt);
+                const JOURNEY_MAP = {};
+                mapRows.forEach(r => { if (r.length >= 2) JOURNEY_MAP[r[0]] = r[1]; });
+
+                const mainRows = smartParse(mainTxt);
+                const entryRows = smartParse(entriesTxt);
+
+                if (mainRows.length < 1 || entryRows.length < 1) {
+                    showStatus("Error: Please paste data in all boxes.", "bg-red-50 text-red-600");
+                    return;
+                }
+
+                const mainHeader = mainRows[0];
+                const entryHeader = entryRows[0];
+                const flowIdx = mainHeader.findIndex(h => h.toLowerCase().includes('flow_name'));
+                const startIdx = mainHeader.findIndex(h => h.toLowerCase().includes('period_start'));
+                const endIdx = mainHeader.findIndex(h => h.toLowerCase().includes('period_end'));
+                const entriesColIdx = mainHeader.findIndex(h => h.toLowerCase().includes('entries'));
+                const idColIdx = entryHeader.findIndex(h => h.toLowerCase().includes('journey id'));
+
+                const entriesLookup = {};
+                const entryDateDetails = entryHeader.map(h => getDetailedDate(h, "DM"));
+                const validEntryKeys = new Set(entryDateDetails.filter(d => d !== null).map(d => d.key));
+
+                for (let i = 1; i < entryRows.length; i++) {
+                    const row = entryRows[i];
+                    const jid = row[idColIdx];
+                    if (!jid) continue;
+                    entriesLookup[jid] = {};
+                    row.forEach((val, colIdx) => {
+                        const detail = entryDateDetails[colIdx];
+                        if (detail) entriesLookup[jid][detail.key] = val;
+                    });
+                }
+
+                const resultRows = [mainHeader];
+                let count = 0;
+
+                for (let i = 1; i < mainRows.length; i++) {
+                    const row = [...mainRows[i]];
+                    const flowName = row[flowIdx];
+                    const dateRaw = row[startIdx];
+                    const jid = JOURNEY_MAP[flowName];
+                    
+                    // Always try to clean up the date format in the output, even if no entry match
+                    const detailDM = getDetailedDate(dateRaw, "DM");
+                    const detailMD = getDetailedDate(dateRaw, "MD");
+                    
+                    let bestDetail = null;
+                    if (detailDM && validEntryKeys.has(detailDM.key)) {
+                        bestDetail = detailDM;
+                    } else if (detailMD && validEntryKeys.has(detailMD.key)) {
+                        bestDetail = detailMD;
+                    } else {
+                        bestDetail = detailDM || detailMD; // Fallback to whatever parses
+                    }
+
+                    if (bestDetail) {
+                        // REWRITE the dates in the output to be consistent DD-MM-YYYY
+                        row[startIdx] = bestDetail.formatted;
+                        if (endIdx !== -1) {
+                            const endDetail = getDetailedDate(row[endIdx], bestDetail.day > 12 ? "DM" : "MD");
+                            if (endDetail) row[endIdx] = endDetail.formatted;
+                        }
+
+                        // Fill entry data
+                        if (jid && entriesLookup[jid] && entriesLookup[jid][bestDetail.key] !== undefined) {
+                            row[entriesColIdx] = entriesLookup[jid][bestDetail.key];
+                            count++;
+                        }
+                    }
+                    resultRows.push(row);
+                }
+
+                const csvContent = resultRows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = `merged_consistent_report.csv`;
+                link.click();
+
+                showStatus(`Success! Merged ${count} rows. All output dates normalized to DD-MM-YYYY.`, "bg-green-50 text-green-700");
+            } catch (err) {
+                console.error(err);
+                showStatus("Error processing data. Check console.", "bg-red-50 text-red-600");
+            }
+        }
+
+        function showStatus(msg, classes) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerText = msg;
+            statusDiv.className = `mt-4 text-sm font-medium p-3 rounded-lg ${classes}`;
+            statusDiv.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
