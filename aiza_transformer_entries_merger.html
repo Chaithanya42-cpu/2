@@ -3,54 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebEngage Flow Data Merger</title>
+    <title>WebEngage Flow Data Merger (Multi-Format Fix)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .drop-shadow-soft { filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.05)); }
-    </style>
 </head>
 <body class="bg-slate-50 min-h-screen p-4 md:p-8 font-sans text-slate-800">
     <div class="max-w-6xl mx-auto">
         <header class="mb-8 text-center">
-            <h1 class="text-3xl font-bold text-slate-900 mb-2">Data Entries Merger</h1>
-            <p class="text-slate-600 font-medium">Map Journey ID entries to your Flow Performance data</p>
+            <h1 class="text-3xl font-bold text-slate-900 mb-2">Data Entries Merger v3</h1>
+            <p class="text-slate-600 font-medium text-sm">Fix: Corrected data loss for dates 13-31 (Mixed Date Formats)</p>
         </header>
 
-        <!-- New Journey Mapping Section -->
         <div class="mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-            <div class="flex items-center justify-between mb-2">
-                <label class="block text-sm font-bold text-slate-700">Step 1: Journey Name to ID Mapping</label>
-                <span class="text-xs font-semibold text-orange-600 uppercase tracking-wider">Required for matching</span>
-            </div>
-            <p class="text-xs text-slate-500 mb-3 italic">Paste your mapping list here. Format: <strong>Flow Name [Tab or Comma] Journey ID</strong> (one per line). </p>
-            <textarea id="mappingData" class="w-full h-32 p-4 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all font-mono" placeholder="KL_BROWSE_ABANDONMENT	abnaf9k
-KL_ABC_En	4l32e5d"></textarea>
-            <div class="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <p class="text-xs text-amber-800 font-medium">⚠️ <strong>Disclaimer:</strong> Ensure the Journey IDs exactly match the IDs in your Entries Data sheet. Incorrect IDs will result in zero entries for that flow.</p>
-            </div>
+            <label class="block text-sm font-bold text-slate-700 mb-2">Step 1: Journey Name to ID Mapping</label>
+            <textarea id="mappingData" class="w-full h-32 p-4 text-sm bg-slate-50 border border-slate-300 rounded-xl font-mono" placeholder="KL_ABC_En	4l32e5d"></textarea>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <!-- Input 2: Main Data -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <label class="block text-sm font-bold text-slate-700 mb-2">Step 2: All Data (Main Performance CSV)</label>
-                <p class="text-xs text-slate-500 mb-3 italic">Paste data with period_start, flow_name, entries columns...</p>
-                <textarea id="mainData" class="w-full h-64 p-4 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" placeholder="period_start,period_end,flow_name..."></textarea>
+                <label class="block text-sm font-bold text-slate-700 mb-2">Step 2: Performance Data (Main Sheet)</label>
+                <textarea id="mainData" class="w-full h-64 p-4 text-sm bg-slate-50 border border-slate-300 rounded-xl" placeholder="Paste data containing period_start and flow_name..."></textarea>
             </div>
 
-            <!-- Input 3: Entries Data -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <label class="block text-sm font-bold text-slate-700 mb-2">Step 3: Entries Data (Horizontal Sheet)</label>
-                <p class="text-xs text-slate-500 mb-3 italic">Paste data with Journey ID and daily dates in columns...</p>
-                <textarea id="entriesData" class="w-full h-64 p-4 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" placeholder="Journey ID, Sum, 01-Mar, 02-Mar..."></textarea>
+                <textarea id="entriesData" class="w-full h-64 p-4 text-sm bg-slate-50 border border-slate-300 rounded-xl" placeholder="Paste horizontal sheet with dates 01-Jan, 13-Jan, etc..."></textarea>
             </div>
         </div>
 
         <div class="flex flex-col items-center gap-4">
-            <button onclick="processData()" class="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-transform active:scale-95 flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
-                </svg>
+            <button onclick="processData()" class="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-transform active:scale-95">
                 Process and Download Updated CSV
             </button>
             <div id="status" class="hidden text-sm font-medium p-3 rounded-lg"></div>
@@ -58,155 +39,151 @@ KL_ABC_En	4l32e5d"></textarea>
     </div>
 
     <script>
-        function parseCSV(text) {
+        function smartParse(text) {
             if (!text || !text.trim()) return [];
-            // Handles both comma and tab separated data (Excel copy-paste is often Tab)
-            const delimiter = text.includes('\t') ? '\t' : (text.includes(',') ? ',' : null);
-            if (!delimiter) return text.split('\n').filter(r => r.trim()).map(c => [c.trim()]);
-            
-            return text.split('\n').filter(r => r.trim()).map(row => {
-                return row.split(delimiter).map(cell => cell.trim().replace(/^"|"$/g, ''));
-            });
+            const rows = [];
+            let currentRow = [];
+            let currentField = '';
+            let inQuotes = false;
+            const delimiter = text.includes('\t') ? '\t' : ',';
+
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const nextChar = text[i + 1];
+                if (inQuotes) {
+                    if (char === '"' && nextChar === '"') { currentField += '"'; i++; }
+                    else if (char === '"') { inQuotes = false; }
+                    else { currentField += char; }
+                } else {
+                    if (char === '"') { inQuotes = true; }
+                    else if (char === delimiter) { currentRow.push(currentField.trim()); currentField = ''; }
+                    else if (char === '\r' || char === '\n') {
+                        currentRow.push(currentField.trim());
+                        if (currentRow.length > 0 && currentRow.some(f => f !== '')) rows.push(currentRow);
+                        currentRow = []; currentField = '';
+                        if (char === '\r' && nextChar === '\n') i++;
+                    } else { currentField += char; }
+                }
+            }
+            if (currentRow.length > 0 || currentField !== '') {
+                currentRow.push(currentField.trim());
+                rows.push(currentRow);
+            }
+            return rows;
         }
 
-        function getDayKey(dateStr) {
-            if (!dateStr) return "";
-            // Converts "01-03-2026" or "01-Mar-2026" to a standard key like "01-Mar"
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+        function tryStandardize(dateStr, format) {
+            if (!dateStr) return null;
             const parts = dateStr.split(/[-/]/);
-            if(parts.length < 2) return dateStr;
+            if (parts.length < 2) return null;
+
+            let day, monthIdx;
             
-            let day = parseInt(parts[0]);
-            let month = parts[1];
-            
-            // If month is numeric (03), map it to Short Month name (Mar)
-            if(!isNaN(month)) {
-                const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-                month = months[parseInt(month) - 1];
+            // Already in DD-MMM format
+            if (isNaN(parts[1])) {
+                day = parseInt(parts[0]);
+                return `${day < 10 ? '0' + day : day}-${parts[1].substring(0, 3)}`;
             }
-            
-            return `${day < 10 ? '0' + day : day}-${month}`;
+
+            // Numeric logic
+            if (format === "MD") {
+                monthIdx = parseInt(parts[0]) - 1;
+                day = parseInt(parts[1]);
+            } else {
+                day = parseInt(parts[0]);
+                monthIdx = parseInt(parts[1]) - 1;
+            }
+
+            if (monthIdx < 0 || monthIdx > 11 || day < 1 || day > 31) return null;
+            return `${day < 10 ? '0' + day : day}-${months[monthIdx]}`;
         }
 
         function processData() {
-            const mappingText = document.getElementById('mappingData').value;
-            const mainText = document.getElementById('mainData').value;
-            const entriesText = document.getElementById('entriesData').value;
-            const statusDiv = document.getElementById('status');
-
-            if (!mappingText || !mainText || !entriesText) {
-                showStatus("Error: All three input sections must contain data.", "bg-red-50 text-red-600 border border-red-200");
-                return;
-            }
+            const mapTxt = document.getElementById('mappingData').value;
+            const mainTxt = document.getElementById('mainData').value;
+            const entriesTxt = document.getElementById('entriesData').value;
 
             try {
-                // 1. Build Dynamic Journey Map
-                const mapRows = parseCSV(mappingText);
+                const mapRows = smartParse(mapTxt);
                 const JOURNEY_MAP = {};
-                mapRows.forEach(row => {
-                    if (row.length >= 2) {
-                        const name = row[0].trim();
-                        const id = row[1].trim();
-                        if (name && id) JOURNEY_MAP[name] = id;
-                    }
-                });
+                mapRows.forEach(r => { if (r.length >= 2) JOURNEY_MAP[r[0]] = r[1]; });
 
-                // 2. Parse Other Data
-                const mainRows = parseCSV(mainText);
-                const entryRows = parseCSV(entriesText);
+                const mainRows = smartParse(mainTxt);
+                const entryRows = smartParse(entriesTxt);
 
-                if (mainRows.length < 2 || entryRows.length < 2) {
-                    showStatus("Error: All Data or Entries Data format is incorrect. Headers are required.", "bg-red-50 text-red-600 border border-red-200");
+                if (mainRows.length < 1 || entryRows.length < 1) {
+                    showStatus("Error: Please paste data in all boxes.", "bg-red-50 text-red-600");
                     return;
                 }
 
                 const mainHeader = mainRows[0];
                 const entryHeader = entryRows[0];
-
-                // Identify indices in Main Data
                 const flowIdx = mainHeader.findIndex(h => h.toLowerCase().includes('flow_name'));
                 const dateIdx = mainHeader.findIndex(h => h.toLowerCase().includes('period_start'));
-                const entriesColIdx = mainHeader.findIndex(h => h.toLowerCase() === 'entries');
-
-                if (flowIdx === -1 || dateIdx === -1 || entriesColIdx === -1) {
-                    showStatus("Error: Main Data missing 'flow_name', 'period_start', or 'entries' column.", "bg-red-50 text-red-600 border border-red-200");
-                    return;
-                }
-
-                // 3. Process Entries into a lookup object
-                const entriesLookup = {};
+                const entriesColIdx = mainHeader.findIndex(h => h.toLowerCase().includes('entries'));
                 const idColIdx = entryHeader.findIndex(h => h.toLowerCase().includes('journey id'));
-                
-                if (idColIdx === -1) {
-                    showStatus("Error: Entries data is missing 'Journey ID' column.", "bg-red-50 text-red-600 border border-red-200");
-                    return;
-                }
 
-                const entryDateKeys = entryHeader.map(h => getDayKey(h));
+                // 1. Build Entries Lookup
+                const entriesLookup = {};
+                const entryDateKeys = entryHeader.map(h => tryStandardize(h, "DM"));
 
                 for (let i = 1; i < entryRows.length; i++) {
                     const row = entryRows[i];
                     const jid = row[idColIdx];
                     if (!jid) continue;
-                    
                     entriesLookup[jid] = {};
-                    for (let j = 0; j < row.length; j++) {
-                        if (j === idColIdx) continue;
-                        const dateKey = entryDateKeys[j];
-                        const val = parseInt(row[j]) || 0;
-                        entriesLookup[jid][dateKey] = val;
-                    }
+                    row.forEach((val, colIdx) => {
+                        const dKey = entryDateKeys[colIdx];
+                        if (dKey) entriesLookup[jid][dKey] = val;
+                    });
                 }
 
-                // 4. Generate Result Rows
+                // 2. Merge with Dual-Format Check
                 const resultRows = [mainHeader];
                 let count = 0;
-                let missingFlows = new Set();
 
                 for (let i = 1; i < mainRows.length; i++) {
                     const row = [...mainRows[i]];
                     const flowName = row[flowIdx];
                     const dateRaw = row[dateIdx];
                     const jid = JOURNEY_MAP[flowName];
-                    const dateKey = getDayKey(dateRaw);
+                    
+                    if (jid && entriesLookup[jid]) {
+                        // TRY BOTH FORMATS (Handles Mixed Excel Dates)
+                        const key1 = tryStandardize(dateRaw, "DM"); // Try 13-01
+                        const key2 = tryStandardize(dateRaw, "MD"); // Try 01-13
+                        
+                        const val = (key1 && entriesLookup[jid][key1] !== undefined) ? entriesLookup[jid][key1] : 
+                                    (key2 && entriesLookup[jid][key2] !== undefined) ? entriesLookup[jid][key2] : undefined;
 
-                    if (jid && entriesLookup[jid] && entriesLookup[jid][dateKey] !== undefined) {
-                        row[entriesColIdx] = entriesLookup[jid][dateKey];
-                        count++;
-                    } else if (jid) {
-                        // JID found in map but date not found in sheet
-                    } else {
-                        missingFlows.add(flowName);
+                        if (val !== undefined) {
+                            row[entriesColIdx] = val;
+                            count++;
+                        }
                     }
                     resultRows.push(row);
                 }
 
-                // 5. Download Logic
-                const csvContent = resultRows.map(r => r.map(c => `"${c}"`).join(",")).join("\n");
+                const csvContent = resultRows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                 const link = document.createElement("a");
-                const url = URL.createObjectURL(blob);
-                link.setAttribute("href", url);
-                link.setAttribute("download", `merged_data_${new Date().toISOString().split('T')[0]}.csv`);
-                document.body.appendChild(link);
+                link.href = URL.createObjectURL(blob);
+                link.download = `merged_performance_report.csv`;
                 link.click();
-                document.body.removeChild(link);
 
-                let statusMsg = `Success! Merged ${count} entries. File downloaded.`;
-                if (missingFlows.size > 0) {
-                    statusMsg += ` Warning: Mapping not found for ${missingFlows.size} flow names (e.g., ${Array.from(missingFlows)[0]}).`;
-                }
-                showStatus(statusMsg, "bg-green-50 text-green-700 border border-green-200");
-
+                showStatus(`Success! Merged ${count} rows across all dates.`, "bg-green-50 text-green-700");
             } catch (err) {
                 console.error(err);
-                showStatus("An error occurred. Please check the format of your inputs.", "bg-red-50 text-red-600 border border-red-200");
+                showStatus("Error processing data. Check console.", "bg-red-50 text-red-600");
             }
         }
 
         function showStatus(msg, classes) {
             const statusDiv = document.getElementById('status');
             statusDiv.innerText = msg;
-            statusDiv.className = `mt-4 text-sm font-medium hidden p-3 rounded-lg ${classes}`;
+            statusDiv.className = `mt-4 text-sm font-medium p-3 rounded-lg ${classes}`;
             statusDiv.classList.remove('hidden');
         }
     </script>
