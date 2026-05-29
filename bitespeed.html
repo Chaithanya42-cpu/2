@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bitespeed Flow & Campaign Performance Analyzer</title>
+    <title>Multi-Channel Retention Marketing Performance Analyzer</title>
     <style>
         :root {
             --primary: #4f46e5;
@@ -24,7 +24,7 @@
         }
 
         .container {
-            max-width: 1300px;
+            max-width: 1400px;
             margin: 0 auto;
         }
 
@@ -46,15 +46,16 @@
 
         .tabs {
             display: flex;
-            gap: 0.5rem;
+            gap: 0.25rem;
             margin-bottom: 1rem;
             border-bottom: 2px solid var(--border);
             padding-bottom: 2px;
+            overflow-x: auto;
         }
 
         .tab {
-            padding: 0.5rem 1.5rem;
-            font-size: 0.95rem;
+            padding: 0.5rem 1.25rem;
+            font-size: 0.9rem;
             font-weight: 600;
             background: none;
             border: none;
@@ -62,6 +63,7 @@
             cursor: pointer;
             border-bottom: 2px solid transparent;
             margin-bottom: -4px;
+            white-space: nowrap;
         }
 
         .tab.active {
@@ -87,7 +89,7 @@
 
         textarea {
             width: 100%;
-            height: 180px;
+            height: 220px;
             padding: 0.75rem;
             border: 1px solid var(--border);
             border-radius: 6px;
@@ -216,20 +218,23 @@
 
 <div class="container">
     <header>
-        <h1>Bitespeed Flow & Campaign Performance Analyzer</h1>
-        <p>Select your report category, paste your raw data, apply date filtering constraints, and download formatted clean layouts.</p>
+        <h1>Flow & Campaign Performance Analyzer</h1>
+        <p>Consolidate and format reporting loops. Normalize multi-channel exports into clean spreadsheet layouts.</p>
     </header>
 
     <div class="tabs">
-        <button class="tab active" onclick="switchMode('flows', this)">Automations / Flows Report</button>
-        <button class="tab" onclick="switchMode('campaigns', this)">Broadcast Campaigns Report</button>
+        <button class="tab active" onclick="switchMode('flows', this)">Bitespeed: Flows</button>
+        <button class="tab" onclick="switchMode('campaigns', this)">Bitespeed: Campaigns</button>
+        <button class="tab" onclick="switchMode('bik', this)">BIK.ai: WhatsApp Flows</button>
+        <button class="tab" onclick="switchMode('bik_campaigns', this)">BIK.ai: WhatsApp Campaigns</button>
+        <button class="tab" onclick="switchMode('limechat', this)">Limechat: Automations</button>
     </div>
 
     <div class="card">
         <label id="inputLabel" for="rawData">Paste Flows Raw Data Here (Include Header Row):</label>
         <textarea id="rawData" placeholder="Paste data directly from spreadsheet columns..."></textarea>
         
-        <div class="filter-panel">
+        <div class="filter-panel" id="dateFilterPanel">
             <div class="filter-group">
                 <label style="margin:0; font-size:0.875rem;">Filter Type:</label>
                 <select id="filterType" onchange="toggleFilterInputs()">
@@ -286,6 +291,12 @@
     let currentMode = 'flows';
     let processedRows = [];
 
+    const bikBlacklistKeywords = [
+        "assign to agent", "handling leakage cases", "negative - assign to agent", "positive/met - assign to agent",
+        "handling mix-up cases", "undelivered", "stop flow", "order update wa", "payment confirmation on whatsapp",
+        "order cancellation notification", "inbound share feedback", "anniversary journey"
+    ];
+
     function toggleFilterInputs() {
         const type = document.getElementById('filterType').value;
         document.getElementById('monthYearFilter').style.display = type === 'month' ? 'flex' : 'none';
@@ -299,13 +310,28 @@
         
         const label = document.getElementById('inputLabel');
         const textPlaceholder = document.getElementById('rawData');
+        const dateFilterPanel = document.getElementById('dateFilterPanel');
         
         if (mode === 'flows') {
-            label.innerText = "Paste Flows Raw Data Here (Include Header Row):";
-            textPlaceholder.placeholder = "Journey name\tNo. of unique recipients\tTotal Revenue\tClicked count\tRead count...";
-        } else {
-            label.innerText = "Paste Broadcast Campaigns Raw Data Here (Include Header Row):";
-            textPlaceholder.placeholder = "S. No.\tBroadcast\tChannel\tStatus\tScheduled at\tDelivered\tRevenue...";
+            label.innerText = "Paste Bitespeed Flows Raw Data Here (Include Header Row):";
+            textPlaceholder.placeholder = "Journey name\tNo. of unique recipients\tTotal Revenue\tClicked count...";
+            dateFilterPanel.style.display = "flex";
+        } else if (mode === 'campaigns') {
+            label.innerText = "Paste Bitespeed Broadcast Campaigns Raw Data Here (Include Header Row):";
+            textPlaceholder.placeholder = "S. No.\tBroadcast\tChannel\tStatus\tScheduled at\tDelivered...";
+            dateFilterPanel.style.display = "flex";
+        } else if (mode === 'bik') {
+            label.innerText = "Paste BIK.ai Raw Journey Sheet Report Here (Include Header Row):";
+            textPlaceholder.placeholder = "JourneyName\tChannels\tTotal Triggers\tMessages Sent\tMessages Delive...";
+            dateFilterPanel.style.display = "none"; 
+        } else if (mode === 'bik_campaigns') {
+            label.innerText = "Paste BIK.ai Broadcast Campaigns Export Sheet Here (Include Header Row):";
+            textPlaceholder.placeholder = "Campaign\tCampaign name\tChannel\tTimestamp\tDelivered\tRead rate...";
+            dateFilterPanel.style.display = "flex";
+        } else if (mode === 'limechat') {
+            label.innerText = "Paste Limechat Excel / Copied Dashboard Data Here (Include Header Row):";
+            textPlaceholder.placeholder = "Journey name\tUnique Users\tTotal\tSent\tDelivered\tFailed\tRead\tRead Rate\tReply Rate\tConversion Rate\tCTR\tRevenue";
+            dateFilterPanel.style.display = "none";
         }
         
         document.getElementById('errorMsg').style.display = 'none';
@@ -315,45 +341,57 @@
         processedRows = [];
     }
 
-    // Helper parsing engine checks to see if row's timestamp fits user selection
     function passesDateFilter(dateStr) {
         const type = document.getElementById('filterType').value;
-        if (type === 'all' || !dateStr) return true;
+        if (type === 'all' || !dateStr || currentMode === 'bik' || currentMode === 'limechat') return true;
 
         try {
-            // Standard parse handle for "Sep 02, 2024 · 12:00 PM" -> Date object
-            let cleanPart = dateStr.split('·')[0].trim(); // "Sep 02, 2024"
+            let cleanPart = dateStr.split('·')[0].trim();
             let rowDate = new Date(Date.parse(cleanPart));
-            if (isNaN(rowDate)) return true; // Fail safe if format drops completely
+            if (isNaN(rowDate)) return true;
 
             if (type === 'month') {
-                const targetMonth = document.getElementById('filterMonth').value; // "Sep"
-                const targetYear = document.getElementById('filterYear').value;  // "2024"
-                
+                const targetMonth = document.getElementById('filterMonth').value;
+                const targetYear = document.getElementById('filterYear').value;
                 let monthsMap = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
                 return rowDate.getMonth() === monthsMap[targetMonth] && rowDate.getFullYear() === parseInt(targetYear);
             } 
-            
             if (type === 'range') {
                 const startVal = document.getElementById('startDate').value;
                 const endVal = document.getElementById('endDate').value;
-                
                 if (!startVal || !endVal) return true;
-                
                 let dStart = new Date(startVal);
                 let dEnd = new Date(endVal);
-                dEnd.setHours(23, 59, 59, 999); // boundary inclusion
-                
-                return rowDate >= dStart && rowDate <= dEnd;
+                dEnd.setHours(23, 59, 59, 999);
+                return rowDate >= dStart && dEnd >= rowDate;
             }
-        } catch(e) {
+        } catch(e) { return true; }
+        return true;
+    }
+
+    function shouldKeepBikJourney(name, revenue) {
+        let cleanName = name.trim().toLowerCase();
+        if (/^\d+$/.test(cleanName)) return false;
+        if (cleanName.endsWith('-whatsapp') || cleanName.endsWith('-instagram') || cleanName.endsWith('-messenger') || cleanName.endsWith('-comment')) {
+            return false;
+        }
+        for (let keyword of bikBlacklistKeywords) {
+            if (cleanName.includes(keyword)) return false;
+        }
+        if (cleanName.startsWith('kl') || cleanName.includes('upsell') || revenue > 0) {
             return true;
         }
         return true;
     }
 
+    function shouldKeepBikCampaign(name) {
+        let cleanName = name.trim().toLowerCase();
+        if (cleanName.includes("bad address") || cleanName.includes("feedback")) return false;
+        return true;
+    }
+
     function processData() {
-        const rawInput = document.getElementById('rawData').value.trim();
+        const rawInput = document.getElementById('rawData').value;
         const errorDiv = document.getElementById('errorMsg');
         const reportCard = document.getElementById('reportCard');
         const outputHead = document.getElementById('outputHead');
@@ -364,34 +402,23 @@
         outputBody.innerHTML = '';
         processedRows = [];
 
-        if (!rawInput) {
+        if (!rawInput.trim()) {
             showError("Please paste data rows before compiling.");
             return;
         }
 
         const lines = rawInput.split('\n');
-        if (lines.length < 2) {
-            showError("Missing data structure. Ensure header lines were highlighted.");
-            return;
-        }
 
-        const headers = lines[0].split('\t').map(h => h.trim().toLowerCase());
-        
         const cleanNum = (val) => {
             if (!val || val.trim() === '-' || val.toLowerCase() === 'n/a') return 0;
             let num = parseFloat(val.replace(/[^\d.-]/g, ''));
             return isNaN(num) ? 0 : num;
         };
 
-        const cleanDate = (val) => {
-            if (!val) return '';
-            return val.split('·')[0].trim();
-        };
-
+        // --- PIPELINE 1: BITESPEED FLOWS ---
         if (currentMode === 'flows') {
-            let nameIdx = headers.findIndex(h => h === 'journey name' || h === 'automation name');
-            if (nameIdx === -1) nameIdx = headers.findIndex(h => h.includes('journey name') || h.includes('automation name'));
-            
+            const headers = lines[0].split('\t').map(h => h.trim().toLowerCase());
+            let nameIdx = headers.findIndex(h => h === 'journey name' || h === 'automation name' || h.includes('journey name'));
             const idx = {
                 name: nameIdx !== -1 ? nameIdx : 2,
                 date: headers.findIndex(h => h.includes('made live') || h.includes('created')),
@@ -403,66 +430,34 @@
                 conversions: headers.findIndex(h => h.includes('conversion count'))
             };
 
-            if (idx.date === -1) idx.date = 6;
-            if (idx.delivered === -1) idx.delivered = 7;
-            if (idx.revenue === -1) idx.revenue = 8;
-            if (idx.clicks === -1) idx.clicks = 9;
-            if (idx.reads === -1) idx.reads = 11;
-            if (idx.cr === -1) idx.cr = 14;
+            if (idx.date === -1) idx.date = 6; if (idx.delivered === -1) idx.delivered = 7; if (idx.revenue === -1) idx.revenue = 8;
+            if (idx.clicks === -1) idx.clicks = 9; if (idx.reads === -1) idx.reads = 11; if (idx.cr === -1) idx.cr = 14;
 
-            outputHead.innerHTML = `
-                <tr>
-                    <th>Journey name</th>
-                    <th class="text-right">Delivered</th>
-                    <th class="text-right">Read/Opens</th>
-                    <th class="text-right">Clicks</th>
-                    <th class="text-right">CR %</th>
-                    <th class="text-right">Revenue</th>
-                    <th class="text-right">AOV</th>
-                </tr>`;
+            outputHead.innerHTML = `<tr><th>Journey name</th><th class="text-right">Delivered</th><th class="text-right">Read/Opens</th><th class="text-right">Clicks</th><th class="text-right">CR %</th><th class="text-right">Revenue</th><th class="text-right">AOV</th></tr>`;
 
             for (let i = 1; i < lines.length; i++) {
                 if (!lines[i].trim()) continue;
                 const cells = lines[i].split('\t');
-                
-                // Filter out records that fall outside chosen month or custom selection boundaries
-                const rawDate = cells[idx.date] ? cells[idx.date].trim() : '';
-                if (!passesDateFilter(rawDate)) continue;
+                if (!passesDateFilter(cells[idx.date])) continue;
 
-                const journeyName = cells[idx.name] ? cells[idx.name].trim() : 'Unknown';
+                const name = cells[idx.name] ? cells[idx.name].trim() : 'Unknown';
                 const delivered = cleanNum(cells[idx.delivered]);
                 const reads = cleanNum(cells[idx.reads]);
                 const clicks = cleanNum(cells[idx.clicks]);
                 const cr = cleanNum(cells[idx.cr]);
                 const revenue = cleanNum(cells[idx.revenue]);
-                
                 let conversions = idx.conversions !== -1 ? cleanNum(cells[idx.conversions]) : 0;
-                let aov = 0;
                 
-                if (conversions > 0) {
-                    aov = revenue / conversions;
-                } else if (revenue > 0 && cr > 0 && delivered > 0) {
-                    let calcConv = Math.round((cr / 100) * delivered);
-                    aov = calcConv > 0 ? revenue / calcConv : revenue;
-                }
+                let aov = conversions > 0 ? revenue / conversions : 0;
 
-                processedRows.push({ name: journeyName, delivered, reads, clicks, cr, revenue, aov });
-
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td><b>${journeyName}</b></td>
-                    <td class="text-right">${delivered.toLocaleString()}</td>
-                    <td class="text-right">${reads.toLocaleString()}</td>
-                    <td class="text-right">${clicks.toLocaleString()}</td>
-                    <td class="text-right">${cr.toFixed(2)}%</td>
-                    <td class="text-right">₹${revenue.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                    <td class="text-right">${aov > 0 ? '₹' + aov.toLocaleString(undefined, {minimumFractionDigits:2}) : '0'}</td>
-                `;
-                outputBody.appendChild(tr);
+                processedRows.push({ name, delivered, reads, clicks, cr, revenue, aov, conversions });
+                appendRowToTable([name, delivered.toLocaleString(), reads.toLocaleString(), clicks.toLocaleString(), cr.toFixed(2) + '%', '₹' + revenue.toLocaleString(undefined, {minimumFractionDigits:2}), aov > 0 ? '₹' + aov.toLocaleString(undefined, {minimumFractionDigits:2}) : '0']);
             }
+        }
 
-        } else {
-            // Process Campaigns with Strict S.No Verification
+        // --- PIPELINE 2: BITESPEED CAMPAIGNS ---
+        else if (currentMode === 'campaigns') {
+            const headers = lines[0].split('\t').map(h => h.trim().toLowerCase());
             const idx = {
                 sno: headers.findIndex(h => h.includes('s. no.') || h === 's.no' || h === 'sno'),
                 campaign: headers.findIndex(h => h.includes('broadcast') || h.includes('campaign')),
@@ -475,87 +470,228 @@
                 orders: headers.findIndex(h => h.includes('conversion count') || h === 'orders')
             };
 
-            if (idx.sno === -1) idx.sno = 0;
-            if (idx.campaign === -1) idx.campaign = 1;
-            if (idx.channel === -1) idx.channel = 3;
-            if (idx.date === -1) idx.date = 5;
-            if (idx.openRate === -1) idx.openRate = 13;
-            if (idx.ctr === -1) idx.ctr = 11;
-            if (idx.revenue === -1) idx.revenue = 9;
-            if (idx.orders === -1) idx.orders = 15;
-            if (idx.spends === -1) idx.spends = 19;
+            if (idx.sno === -1) idx.sno = 0; if (idx.campaign === -1) idx.campaign = 1; if (idx.channel === -1) idx.channel = 3;
+            if (idx.date === -1) idx.date = 5; if (idx.openRate === -1) idx.openRate = 13; if (idx.ctr === -1) idx.ctr = 11;
+            if (idx.revenue === -1) idx.revenue = 9; if (idx.orders === -1) idx.orders = 15; if (idx.spends === -1) idx.spends = 19;
 
-            outputHead.innerHTML = `
-                <tr>
-                    <th>Date</th>
-                    <th>Campaign Name</th>
-                    <th>Offer</th>
-                    <th>Type</th>
-                    <th>Channel</th>
-                    <th class="text-right">Open Rate %</th>
-                    <th class="text-right">CTR%</th>
-                    <th class="text-right">Spends</th>
-                    <th class="text-right">Revenue</th>
-                    <th class="text-right">Orders</th>
-                    <th class="text-right">ROI</th>
-                </tr>`;
+            outputHead.innerHTML = `<tr><th>Date</th><th>Campaign Name</th><th>Offer</th><th>Type</th><th>Channel</th><th class="text-right">Open Rate %</th><th class="text-right">CTR%</th><th class="text-right">Spends</th><th class="text-right">Revenue</th><th class="text-right">Orders</th><th class="text-right">ROI</th></tr>`;
 
             for (let i = 1; i < lines.length; i++) {
                 if (!lines[i].trim()) continue;
                 const cells = lines[i].split('\t');
-                
-                // STRICT CRITERIA: Ignore any rows missing a valid Serial Number entry
                 const serialNum = cells[idx.sno] ? cells[idx.sno].trim() : '';
-                if (!serialNum || isNaN(parseInt(serialNum))) {
-                    continue; // Drops 'Original Br', 'WhatsApp WhatsApp' breakdown entries effortlessly
-                }
+                if (!serialNum || isNaN(parseInt(serialNum))) continue; 
+                if (!passesDateFilter(cells[idx.date])) continue;
 
-                const rawDate = cells[idx.date] ? cells[idx.date].trim() : '';
-                if (!passesDateFilter(rawDate)) continue;
-
-                const campName = cells[idx.campaign] ? cells[idx.campaign].trim() : 'Unknown';
-                const date = cleanDate(rawDate);
+                const name = cells[idx.campaign] ? cells[idx.campaign].trim() : 'Unknown';
+                const date = cells[idx.date] ? cells[idx.date].split('·')[0].trim() : '';
                 const channel = cells[idx.channel] ? cells[idx.channel].trim() : 'whatsapp';
                 const openRate = cleanNum(cells[idx.openRate]);
                 const ctr = cleanNum(cells[idx.ctr]);
                 const spends = cleanNum(cells[idx.spends]);
                 const revenue = cleanNum(cells[idx.revenue]);
                 const orders = cleanNum(cells[idx.orders]);
-                
-                let roi = 0;
-                if (spends > 0) {
-                    roi = revenue / spends;
-                } else if (revenue > 0 && spends === 0) {
-                    roi = '-';
-                }
+                let roi = spends > 0 ? (revenue / spends).toFixed(2) : (revenue > 0 ? '-' : '0.00');
 
-                processedRows.push({ date, campaign: campName, offer: '', type: '', channel, openRate, ctr, spends, revenue, orders, roi });
+                processedRows.push({ date, campaign: name, offer: '', type: '', channel, openRate, ctr, spends, revenue, orders, roi });
+                appendRowToTable([date, name, '', '', channel.toUpperCase(), openRate > 0 ? openRate.toFixed(2) + '%' : 'N/A', ctr.toFixed(2) + '%', '₹' + spends.toLocaleString(), '₹' + revenue.toLocaleString(), orders, roi]);
+            }
+        }
+
+        // --- PIPELINE 3: BIK.AI WHATSAPP FLOWS ---
+        else if (currentMode === 'bik') {
+            const headers = lines[0].split('\t').map(h => h.trim().toLowerCase());
+            const idx = {
+                name: headers.findIndex(h => h.includes('journeyname') || h === 'journey name'),
+                delivered: headers.findIndex(h => h.includes('messages delive') || h.includes('delivered')),
+                reads: headers.findIndex(h => h.includes('messages rea') || h.includes('read')),
+                clicks: headers.findIndex(h => h.includes('link clicks') || h.includes('clicks')),
+                orders: headers.findIndex(h => h.includes('orders') || h === 'conversions'),
+                revenue: headers.findIndex(h => h === 'revenue' || h.includes('total revenue'))
+            };
+
+            if (idx.name === -1) idx.name = 0; if (idx.delivered === -1) idx.delivered = 9; if (idx.reads === -1) idx.reads = 10;
+            if (idx.clicks === -1) idx.clicks = 11; if (idx.orders === -1) idx.orders = 12; if (idx.revenue === -1) idx.revenue = 13;
+
+            outputHead.innerHTML = `<tr><th>Journey Name</th><th class="text-right">Delivered</th><th class="text-right">Read/Opens</th><th class="text-right">Clicks</th><th class="text-right">Revenue</th><th class="text-right">Conversions</th><th class="text-right">AOV</th></tr>`;
+
+            for (let i = 1; i < lines.length; i++) {
+                if (!lines[i].trim()) continue;
+                const cells = lines[i].split('\t');
+                const name = cells[idx.name] ? cells[idx.name].trim() : '';
+                const revenue = cleanNum(cells[idx.revenue]);
+
+                if (!name || !shouldKeepBikJourney(name, revenue)) continue;
+
+                const delivered = cleanNum(cells[idx.delivered]);
+                const reads = cleanNum(cells[idx.reads]);
+                const clicks = cleanNum(cells[idx.clicks]);
+                const orders = cleanNum(cells[idx.orders]);
+                let aov = orders > 0 ? revenue / orders : 0;
+
+                processedRows.push({ name, delivered, reads, clicks, revenue, orders, aov });
+                appendRowToTable([name, delivered.toLocaleString(), reads.toLocaleString(), clicks.toLocaleString(), '₹' + revenue.toLocaleString(undefined, {minimumFractionDigits:2}), orders.toLocaleString(), aov > 0 ? '₹' + aov.toLocaleString(undefined, {maximumFractionDigits:0}) : '0']);
+            }
+        }
+
+        // --- PIPELINE 4: BIK.AI WHATSAPP CAMPAIGNS ---
+        else if (currentMode === 'bik_campaigns') {
+            const headers = lines[0].split('\t').map(h => h.trim().toLowerCase());
+            const idx = {
+                name: headers.findIndex(h => h === 'campaign name' || h.includes('campaign name')),
+                channel: headers.findIndex(h => h === 'channel'),
+                timestamp: headers.findIndex(h => h === 'timestamp' || h.includes('time')),
+                delivered: headers.findIndex(h => h === 'delivered' || h.includes('delivered')),
+                readRate: headers.findIndex(h => h.includes('read rate') || h.includes('open rate')),
+                clicks: headers.findIndex(h => h.includes('link clicks') || h.includes('clicks')),
+                orders: headers.findIndex(h => h === 'orders' || h.includes('orders')),
+                revenue: headers.findIndex(h => h === 'revenue' || h.includes('revenue'))
+            };
+
+            if (idx.name === -1) idx.name = 1; if (idx.channel === -1) idx.channel = 2; if (idx.timestamp === -1) idx.timestamp = 3;
+            if (idx.delivered === -1) idx.delivered = 8; if (idx.readRate === -1) idx.readRate = 17; if (idx.clicks === -1) idx.clicks = 18;
+            if (idx.orders === -1) idx.orders = 11; if (idx.revenue === -1) idx.revenue = 12;
+
+            outputHead.innerHTML = `<tr><th>Date</th><th>Campaign Name</th><th>Type</th><th>Channel</th><th class="text-right">Open Rate %</th><th class="text-right">CTR%</th><th class="text-right">Spends</th><th class="text-right">Revenue</th><th class="text-right">ROI</th><th class="text-right">No. Of Orders</th></tr>`;
+
+            for (let i = 1; i < lines.length; i++) {
+                if (!lines[i].trim()) continue;
+                const cells = lines[i].split('\t');
+                const name = cells[idx.name] ? cells[idx.name].trim() : '';
+                
+                if (!name || !shouldKeepBikCampaign(name)) continue;
+                
+                const timestamp = cells[idx.timestamp] ? cells[idx.timestamp].trim() : '';
+                if (!passesDateFilter(timestamp)) continue;
+
+                const date = timestamp ? timestamp.split(',')[0].trim() : '';
+                const channel = cells[idx.channel] ? cells[idx.channel].trim() : 'whatsapp';
+                const delivered = cleanNum(cells[idx.delivered]);
+                const readRate = cleanNum(cells[idx.readRate]);
+                const clicks = cleanNum(cells[idx.clicks]);
+                const orders = cleanNum(cells[idx.orders]);
+                const revenue = cleanNum(cells[idx.revenue]);
+
+                let ctr = delivered > 0 ? (clicks / delivered) * 100 : 0;
+                let spends = delivered * 0.90;
+                let roi = spends > 0 ? (revenue / spends).toFixed(2) : (revenue > 0 ? '-' : '0.00');
+
+                processedRows.push({ date, name, type: '', channel, readRate, ctr, spends, revenue, roi, orders });
 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${date}</td>
-                    <td><b>${campName}</b></td>
-                    <td><i>--</i></td>
+                    <td><b>${name}</b></td>
                     <td><i>--</i></td>
                     <td><span style="background:#e0e7ff; padding:2px 6px; border-radius:4px; font-size:11px;">${channel.toUpperCase()}</span></td>
-                    <td class="text-right">${openRate > 0 ? openRate.toFixed(2) + '%' : 'N/A'}</td>
+                    <td class="text-right">${readRate.toFixed(2)}%</td>
                     <td class="text-right">${ctr.toFixed(2)}%</td>
                     <td class="text-right">₹${spends.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                     <td class="text-right">₹${revenue.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                    <td class="text-right" style="font-weight:bold; color:${roi > 0 ? '#047857' : 'inherit'}">${roi}</td>
                     <td class="text-right">${orders}</td>
-                    <td class="text-right" style="font-weight:bold; color:${roi > 0 ? '#047857' : 'inherit'}">${typeof roi === 'number' ? roi.toFixed(2) : roi}</td>
+                `;
+                outputBody.appendChild(tr);
+            }
+        }
+
+        // --- PIPELINE 5: LIMECHAT AUTOMATIONS (RE-ENGINEERED EXCEL PARSER) ---
+        else if (currentMode === 'limechat') {
+            outputHead.innerHTML = `<tr><th>Automation Name</th><th class="text-right">Unique Users</th><th class="text-right">Read/Opens</th><th class="text-right">Clicks (CTR)</th><th class="text-right">CR %</th><th class="text-right">Revenue</th></tr>`;
+
+            const headers = lines[0].split('\t').map(h => h.trim().toLowerCase());
+            
+            // Map Limechat columns explicitly
+            const idx = {
+                name: headers.findIndex(h => h.includes('journey name') || h === 'title'),
+                uniqueUsers: headers.findIndex(h => h.includes('unique users')),
+                sent: headers.findIndex(h => h === 'sent'),
+                read: headers.findIndex(h => h === 'read'),
+                conversionRate: headers.findIndex(h => h.includes('conversion rat')),
+                ctr: headers.findIndex(h => h === 'ctr'),
+                revenue: headers.findIndex(h => h === 'revenue')
+            };
+
+            // Hard Fallbacks based on standard Excel template sequence
+            if (idx.name === -1) idx.name = 0;
+            if (idx.uniqueUsers === -1) idx.uniqueUsers = 1;
+            if (idx.sent === -1) idx.sent = 3;
+            if (idx.read === -1) idx.read = 6;
+            if (idx.conversionRate === -1) idx.conversionRate = 9;
+            if (idx.ctr === -1) idx.ctr = 10;
+            if (idx.revenue === -1) idx.revenue = 11;
+
+            for (let i = 1; i < lines.length; i++) {
+                let line = lines[i];
+                if (!line.trim()) continue;
+
+                let cells = line.split('\t');
+                let rawNameCell = cells[idx.name] ? cells[idx.name].trim() : '';
+                if (!rawNameCell) continue;
+
+                // CLEANING ENGINE: Strip Excel line breaks inside text blocks
+                // Splits strings cleanly at line-breaks and isolates only the real primary automation label title
+                let cleanJourneyName = rawNameCell.split(/[\r\n]+/)[0].trim();
+
+                // Double fail-safe: Check if the string mistakenly inherited operational tracking blocks
+                if (cleanJourneyName.toLowerCase().includes("so fetch") || cleanJourneyName.toLowerCase().includes("last edited")) {
+                    continue; 
+                }
+
+                // Metric Mappings: Unique Users = Sent, Read/Opens = Read, Clicks = CTR, CR% = Conversion Rate
+                let uniqueUsersCount = idx.sent !== -1 ? cleanNum(cells[idx.sent]) : cleanNum(cells[idx.uniqueUsers]);
+                let readCount = cleanNum(cells[idx.read]);
+                let conversionRatePct = cleanNum(cells[idx.conversionRate]);
+                let ctrPct = cleanNum(cells[idx.ctr]);
+                let revenueVal = cleanNum(cells[idx.revenue]);
+
+                processedRows.push({
+                    title: cleanJourneyName,
+                    uniqueUsers: uniqueUsersCount,
+                    readOpens: readCount,
+                    clicks: ctrPct,
+                    cr: conversionRatePct,
+                    revenue: revenueVal
+                });
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><b>${cleanJourneyName}</b></td>
+                    <td class="text-right">${uniqueUsersCount.toLocaleString()}</td>
+                    <td class="text-right">${readCount.toLocaleString()}</td>
+                    <td class="text-right">${ctrPct.toFixed(2)}%</td>
+                    <td class="text-right">${conversionRatePct.toFixed(2)}%</td>
+                    <td class="text-right">₹${revenueVal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                 `;
                 outputBody.appendChild(tr);
             }
         }
 
         if (processedRows.length === 0) {
-            showError("No metrics matched your filter timeline conditions.");
+            showError("No data rows passed the active structural filtering conditions.");
             return;
         }
 
         reportCard.style.display = 'block';
         downloadBtn.disabled = false;
+    }
+
+    function appendRowToTable(dataArray) {
+        const outputBody = document.getElementById('outputBody');
+        const tr = document.createElement('tr');
+        
+        dataArray.forEach((val, idx) => {
+            const td = document.createElement('td');
+            if (idx === 0 || idx === 1) { td.innerHTML = `<b>${val}</b>`; } 
+            else if (val.toString().startsWith('₹') || val.toString().endsWith('%') || !isNaN(val.replace(/,/g, ''))) {
+                td.className = 'text-right';
+                td.innerText = val;
+            } else {
+                td.innerText = val;
+            }
+            tr.appendChild(td);
+        });
+        outputBody.appendChild(tr);
     }
 
     function showError(msg) {
@@ -572,41 +708,34 @@
         if (currentMode === 'flows') {
             csvContent += "Journey name,Delivered,Read/Opens,Clicks,CR %,Revenue,AOV\r\n";
             processedRows.forEach(row => {
-                let line = [
-                    `"${row.name.replace(/"/g, '""')}"`,
-                    row.delivered,
-                    row.reads,
-                    row.clicks,
-                    `${row.cr.toFixed(2)}%`,
-                    row.revenue.toFixed(2),
-                    row.aov.toFixed(2)
-                ].join(",");
-                csvContent += line + "\r\n";
+                csvContent += [`"${row.name.replace(/"/g, '""')}"`, row.delivered, row.reads, row.clicks, `${row.cr.toFixed(2)}%`, row.revenue.toFixed(2), row.aov.toFixed(2)].join(",") + "\r\n";
             });
-        } else {
+        } else if (currentMode === 'campaigns') {
             csvContent += "Date,Campaign Name,Offer,Type,Channel,Open Rate %,CTR%,Spends,Revenue,Orders,ROI\r\n";
             processedRows.forEach(row => {
-                let line = [
-                    `"${row.date}"`,
-                    `"${row.campaign.replace(/"/g, '""')}"`,
-                    "", 
-                    "", 
-                    `"${row.channel}"`,
-                    `${row.openRate.toFixed(2)}%`,
-                    `${row.ctr.toFixed(2)}%`,
-                    row.spends.toFixed(2),
-                    row.revenue.toFixed(2),
-                    row.orders,
-                    typeof row.roi === 'number' ? row.roi.toFixed(2) : row.roi
-                ].join(",");
-                csvContent += line + "\r\n";
+                csvContent += [`"${row.date}"`, `"${row.campaign.replace(/"/g, '""')}"`, "", "", `"${row.channel}"`, `${row.openRate.toFixed(2)}%`, `${row.ctr.toFixed(2)}%`, row.spends.toFixed(2), row.revenue.toFixed(2), row.orders, row.roi].join(",") + "\r\n";
+            });
+        } else if (currentMode === 'bik') {
+            csvContent += "Journey Name,Delivered,Read/Opens,Clicks,Revenue,Conversions,AOV\r\n";
+            processedRows.forEach(row => {
+                csvContent += [`"${row.name.replace(/"/g, '""')}"`, row.delivered, row.reads, row.clicks, row.revenue.toFixed(2), row.orders, row.aov.toFixed(2)].join(",") + "\r\n";
+            });
+        } else if (currentMode === 'bik_campaigns') {
+            csvContent += "Date,Campaign Name,Type,Channel,Open Rate %,CTR%,Spends,Revenue,ROI,No. Of Orders\r\n";
+            processedRows.forEach(row => {
+                csvContent += [`"${row.date}"`, `"${row.name.replace(/"/g, '""')}"`, "", `"${row.channel}"`, `${row.readRate.toFixed(2)}%`, `${row.ctr.toFixed(2)}%`, row.spends.toFixed(2), row.revenue.toFixed(2), row.roi, row.orders].join(",") + "\r\n";
+            });
+        } else if (currentMode === 'limechat') {
+            csvContent += "Automation Name,Unique Users,Read/Opens,Clicks,CR %,Revenue\r\n";
+            processedRows.forEach(row => {
+                csvContent += [`"${row.title.replace(/"/g, '""')}"`, row.uniqueUsers, row.readOpens, `${row.clicks.toFixed(2)}%`, `${row.cr.toFixed(2)}%`, row.revenue.toFixed(2)].join(",") + "\r\n";
             });
         }
 
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);
-        link.setAttribute("download", currentMode === 'flows' ? "Bitespeed_Flows_Filtered.csv" : "Bitespeed_Campaigns_Filtered.csv");
+        link.setAttribute("download", `Normalized_${currentMode}_Report.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
