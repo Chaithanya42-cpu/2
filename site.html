@@ -6,10 +6,6 @@
     <title>LuminaBooks — Premium Digital Book Store</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
     <style>
         :root {
             /* Deep Ink Navy + Warm Amber — an editorial palette with personality */
@@ -862,10 +858,10 @@
     <!-- PROMO BAR -->
     <div class="promo-bar">
         <div class="promo-track">
-            <span>🎉 Up to <em>50% OFF</em> on digital bundles over ₹2499 — Use code <em>GEN50</em> at checkout</span>
-            <span>🎉 Up to <em>50% OFF</em> on digital bundles over ₹2499 — Use code <em>GEN50</em> at checkout</span>
-            <span>🎉 Up to <em>50% OFF</em> on digital bundles over ₹2499 — Use code <em>GEN50</em> at checkout</span>
-            <span>🎉 Up to <em>50% OFF</em> on digital bundles over ₹2499 — Use code <em>GEN50</em> at checkout</span>
+            <span>🎉 Up to <em>50% OFF</em> on digital bundles over ₹499 — Use code <em>GEN50</em> at checkout</span>
+            <span>🎉 Up to <em>50% OFF</em> on digital bundles over ₹499 — Use code <em>GEN50</em> at checkout</span>
+            <span>🎉 Up to <em>50% OFF</em> on digital bundles over ₹499 — Use code <em>GEN50</em> at checkout</span>
+            <span>🎉 Up to <em>50% OFF</em> on digital bundles over ₹499 — Use code <em>GEN50</em> at checkout</span>
         </div>
     </div>
 
@@ -966,9 +962,9 @@
                     <h4>Our Story</h4>
                     <p>Founded in 2021, LuminaBooks was built to close the gap between fast-moving technology and slow traditional publishing. We curate high-fidelity knowledge assets directly from practitioners to your screen.</p>
                     <div class="stat-row" style="margin-top: 1.5rem;">
-                        <div class="stat-item"><div class="num">500+</div><div class="label">Books Published</div></div>
-                        <div class="stat-item"><div class="num">28K</div><div class="label">Readers</div></div>
-                        <div class="stat-item"><div class="num">4.9★</div><div class="label">Avg Rating</div></div>
+                        <div class="stat-item"><div class="num">50+</div><div class="label">Books Sold</div></div>
+                        <div class="stat-item"><div class="num">280+</div><div class="label">Readers</div></div>
+                        <div class="stat-item"><div class="num">4.1★</div><div class="label">Avg Rating</div></div>
                     </div>
                 </div>
                 <div class="about-block">
@@ -1041,7 +1037,7 @@
                 <div class="tier-card featured">
                     <div class="tier-badge-pill">Best Value</div>
                     <div class="tier-name">Monthly Access</div>
-                    <div class="tier-price">₹899<sub>/mo</sub></div>
+                    <div class="tier-price">₹699<sub>/mo</sub></div>
                     <ul class="tier-perks">
                         <li>Full library access (30 days)</li>
                         <li>Early access to new titles</li>
@@ -1052,7 +1048,7 @@
                 </div>
                 <div class="tier-card">
                     <div class="tier-name">Annual License</div>
-                    <div class="tier-price">₹6,499<sub>/yr</sub></div>
+                    <div class="tier-price">₹4,499<sub>/yr</sub></div>
                     <ul class="tier-perks">
                         <li>Full library access (365 days)</li>
                         <li>Team sharing (up to 3 seats)</li>
@@ -1284,18 +1280,15 @@
         <div class="modal-box">
             <h2>Welcome back</h2>
             <p class="sub">Sign in to access your library and purchase history.</p>
-            <div class="social-row">
-                <button class="social-btn" onclick="googleSignIn()" style="width:100%; justify-content:center;">🔵 Continue with Google</button>
-            </div>
-            <div style="text-align:center; color:var(--muted); font-size:0.78rem; margin:0.9rem 0;">or use email</div>
             <div class="auth-tabs">
                 <div class="auth-tab active" id="tab-login" onclick="authTab('login')">Sign In</div>
                 <div class="auth-tab" id="tab-signup" onclick="authTab('signup')">Register</div>
+                <div class="auth-tab" id="tab-otp" onclick="authTab('otp')">Mobile OTP</div>
             </div>
             <!-- Login -->
             <div class="auth-group active" id="grp-login">
-                <div class="form-field" style="margin:0;"><label>Email</label><input type="email" class="form-input" id="login-email" placeholder="you@email.com"></div>
-                <div class="form-field" style="margin:0;"><label>Password</label><input type="password" class="form-input" id="login-pass" placeholder="Your password"></div>
+                <div class="form-field" style="margin:0;"><label>Email</label><input type="email" class="form-input" id="login-email" value="demo@lumina.com"></div>
+                <div class="form-field" style="margin:0;"><label>Password</label><input type="password" class="form-input" id="login-pass" value="password123"></div>
                 <button class="btn-primary" style="width:100%; justify-content:center;" onclick="doLogin()">Sign In →</button>
             </div>
             <!-- Signup -->
@@ -1304,6 +1297,16 @@
                 <div class="form-field" style="margin:0;"><label>Email</label><input type="email" class="form-input" id="reg-email" placeholder="you@email.com"></div>
                 <div class="form-field" style="margin:0;"><label>Password</label><input type="password" class="form-input" id="reg-pass" placeholder="Min. 6 characters"></div>
                 <button class="btn-primary" style="width:100%; justify-content:center;" onclick="doRegister()">Create Account →</button>
+            </div>
+            <!-- OTP -->
+            <div class="auth-group" id="grp-otp">
+                <div class="form-field" style="margin:0;"><label>Mobile Number</label><input type="tel" class="form-input" id="otp-phone" placeholder="+91 98765 43210"></div>
+                <div id="otp-code-wrap" style="display:none;" class="form-field"><label>OTP Code</label><input type="text" class="form-input" value="123456"></div>
+                <button class="btn-primary" style="width:100%; justify-content:center;" id="otp-btn" onclick="doOtp()">Send OTP →</button>
+            </div>
+            <div class="social-row">
+                <button class="social-btn" onclick="socialLogin('Google')">🔵 Google</button>
+                <button class="social-btn" onclick="socialLogin('Facebook')">🔷 Facebook</button>
             </div>
             <button class="btn-ghost" style="width:100%; margin-top:0.75rem;" onclick="closeModal()">Cancel</button>
         </div>
@@ -1351,25 +1354,7 @@
 
     <script>
     // ─────────────── DATA ───────────────
-    // ═══════════════════════════════════════════════════════════
-    // FIREBASE CONFIG — replace with YOUR project's values
-    // (Firebase Console → Project Settings → General → Your apps → Web app)
-    // ═══════════════════════════════════════════════════════════
-    const firebaseConfig = {
-        apiKey: "YOUR_API_KEY",
-        authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-        projectId: "YOUR_PROJECT_ID",
-        storageBucket: "YOUR_PROJECT_ID.appspot.com",
-        messagingSenderId: "YOUR_SENDER_ID",
-        appId: "YOUR_APP_ID"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db = firebase.firestore();
-
-    // Fallback sample data — used only if Firestore has no products yet
-    // (e.g. before you've added anything via the admin panel)
-    const FALLBACK_BOOKS = [
+    const BOOKS = [
         { id:701, title:"Mastering Web Development", author:"Danielle Vance", price:499, collection:"tech", tags:["tech","bestseller"], img:"https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=400&q=80" },
         { id:702, title:"The Digital Marketing Playbook", author:"Marcus Sterling", price:299, collection:"business", tags:["business","bestseller"], img:"https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=400&q=80" },
         { id:703, title:"Data Analysis Fundamentals", author:"Dr. K. Srinivasan", price:649, collection:"analytics", tags:["analytics","top-rated"], img:"https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=400&q=80" },
@@ -1378,8 +1363,7 @@
         { id:706, title:"Conversion Automation Blueprints", author:"Marcus Sterling", price:549, collection:"business", tags:["business","top-rated"], img:"https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=400&q=80" }
     ];
 
-    let BOOKS = [];     // populated from Firestore on load
-    let COLLECTIONS = [
+    const COLLECTIONS = [
         { slug:"bestseller", title:"Best Sellers", desc:"High-velocity manuals leading download charts.", img:"https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=600&q=80", badge:"Hot" },
         { slug:"new", title:"New Arrivals", desc:"Freshly compiled frameworks on modern architecture.", img:"https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=600&q=80", badge:"Fresh" },
         { slug:"top-rated", title:"Top Rated", desc:"Highest peer-reviewed resource packages.", img:"https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=600&q=80", badge:"5-Star" },
@@ -1393,37 +1377,8 @@
     // ─────────────── STATE ───────────────
     let cart = [];
     let discount = 0;
-    let user = null;       // Firebase user object once signed in
-
-    // ─────────────── LOAD PRODUCTS FROM FIRESTORE ───────────────
-    async function loadBooks() {
-        try {
-            const snap = await db.collection('products').get();
-            if (snap.empty) {
-                BOOKS = FALLBACK_BOOKS;
-            } else {
-                BOOKS = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            }
-        } catch (e) {
-            console.warn('Could not load products from Firestore, using fallback data.', e);
-            BOOKS = FALLBACK_BOOKS;
-        }
-        // Re-render everything that depends on BOOKS now that it's loaded
-        filterHome('bestseller', document.querySelector('.chip.active'));
-        renderShop(BOOKS, 'all');
-    }
-
-    async function loadCategories() {
-        try {
-            const snap = await db.collection('categories').get();
-            if (!snap.empty) {
-                COLLECTIONS = snap.docs.map(doc => ({ slug: doc.id, ...doc.data() }));
-            }
-        } catch (e) {
-            console.warn('Could not load categories from Firestore, using fallback data.', e);
-        }
-        renderCollections();
-    }
+    let user = null;
+    const userDB = { "demo@lumina.com": { pass:"password123", purchases:[701,704] } };
 
     // ─────────────── PANEL ROUTING ───────────────
     function showPanel(id) {
@@ -1606,37 +1561,15 @@
         recalcTotal();
     }
 
-    async function placeOrder() {
+    function placeOrder() {
         if (cart.length === 0) { alert('Your cart is empty.'); return; }
         const city = document.getElementById('addr-city').value.trim();
         const pin = document.getElementById('addr-pin').value.trim();
         if (!city || !pin) { alert('Please enter your city and PIN code.'); return; }
         if (!user) { alert('Please sign in to complete your purchase.'); openAccount(); return; }
 
-        // NOTE: In production, payment (Razorpay/Cashfree) must be completed and
-        // verified server-side BEFORE writing purchases here. This currently
-        // grants access immediately for demo purposes.
-        const purchasedIds = cart.map(b => b.id);
-        try {
-            await db.collection('users').doc(user.uid).set({
-                email: user.email,
-                purchases: firebase.firestore.FieldValue.arrayUnion(...purchasedIds)
-            }, { merge: true });
-
-            await db.collection('orders').add({
-                userId: user.uid,
-                email: user.email,
-                items: purchasedIds,
-                amount: cart.reduce((s,b)=>s+b.price,0) - discount,
-                city, pin,
-                status: 'paid', // set by your payment-verification step in production
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-        } catch (e) {
-            console.error(e);
-            alert('Something went wrong saving your order. Please try again.');
-            return;
-        }
+        if (!userDB[user]) userDB[user] = { pass:'N/A', purchases:[] };
+        cart.forEach(b => { if (!userDB[user].purchases.includes(b.id)) userDB[user].purchases.push(b.id); });
 
         cart = []; discount = 0;
         document.getElementById('coupon-input').value = '';
@@ -1657,7 +1590,7 @@
         a.click();
     }
 
-    // ─────────────── ACCOUNT / AUTH (Firebase) ───────────────
+    // ─────────────── ACCOUNT ───────────────
     function openAccount() {
         if (user) { showPanel('account'); }
         else { document.getElementById('auth-modal').style.display = 'flex'; }
@@ -1675,9 +1608,13 @@
     function doLogin() {
         const email = document.getElementById('login-email').value.trim();
         const pass = document.getElementById('login-pass').value.trim();
-        auth.signInWithEmailAndPassword(email, pass)
-            .then(() => { closeModal(); showPanel('account'); })
-            .catch(err => alert('Sign-in failed: ' + err.message));
+        if (userDB[email] && userDB[email].pass === pass) {
+            user = email;
+            closeModal();
+            showPanel('account');
+        } else {
+            alert('Invalid email or password. Try: demo@lumina.com / password123');
+        }
     }
 
     function doRegister() {
@@ -1686,61 +1623,51 @@
         const pass = document.getElementById('reg-pass').value.trim();
         if (!name || !email || !pass) { alert('Please fill all fields.'); return; }
         if (pass.length < 6) { alert('Password must be at least 6 characters.'); return; }
-        auth.createUserWithEmailAndPassword(email, pass)
-            .then(cred => cred.user.updateProfile({ displayName: name }))
-            .then(() => {
-                closeModal();
-                showPanel('account');
-                showToast('Account created! Welcome, ' + name + '.');
-            })
-            .catch(err => alert('Registration failed: ' + err.message));
+        if (userDB[email]) { alert('This email is already registered.'); return; }
+        userDB[email] = { pass, purchases:[] };
+        user = email;
+        closeModal();
+        showPanel('account');
+        showToast('Account created! Welcome, ' + name + '.');
     }
 
-    function googleSignIn() {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        auth.signInWithPopup(provider)
-            .then(() => {
-                closeModal();
-                showPanel('account');
-                showToast('Signed in with Google!');
-            })
-            .catch(err => alert('Google sign-in failed: ' + err.message));
+    function doOtp() {
+        const phone = document.getElementById('otp-phone').value.trim();
+        const wrap = document.getElementById('otp-code-wrap');
+        const btn = document.getElementById('otp-btn');
+        if (!phone) { alert('Please enter your phone number.'); return; }
+        if (wrap.style.display === 'none') {
+            wrap.style.display = 'block';
+            btn.textContent = 'Verify OTP →';
+            alert('OTP sent (demo code: 123456)');
+        } else {
+            user = 'mobile-' + Date.now() + '@lumina.com';
+            userDB[user] = { pass:'N/A', purchases:[702,703] };
+            closeModal();
+            showPanel('account');
+        }
+    }
+
+    function socialLogin(provider) {
+        user = provider.toLowerCase() + '-' + Date.now() + '@lumina.com';
+        userDB[user] = { pass:'N/A', purchases:[705] };
+        closeModal();
+        showPanel('account');
+        showToast('Signed in with ' + provider + '!');
     }
 
     function signOut() {
-        auth.signOut().then(() => {
-            showPanel('home');
-            showToast('Signed out successfully.');
-        });
+        user = null;
+        showPanel('home');
+        showToast('Signed out successfully.');
     }
 
-    // Keep `user` in sync with Firebase Auth state across the whole app
-    auth.onAuthStateChanged(fbUser => {
-        user = fbUser;
-        updateAuthUI();
-    });
-
-    function updateAuthUI() {
-        // Reflect signed-in state on the account icon, etc. (extend as needed)
-        if (document.getElementById('panel-account').classList.contains('active')) {
-            renderAccount();
-        }
-    }
-
-    async function renderAccount() {
-        if (!user) { showPanel('home'); return; }
-        const initial = (user.displayName || user.email)[0].toUpperCase();
+    function renderAccount() {
+        if (!user) return;
+        const initial = user[0].toUpperCase();
         document.getElementById('acc-avatar').textContent = initial;
-        document.getElementById('acc-email').textContent = user.email;
-
-        let purchases = [];
-        try {
-            const doc = await db.collection('users').doc(user.uid).get();
-            purchases = (doc.exists && doc.data().purchases) || [];
-        } catch (e) {
-            console.warn('Could not load purchases', e);
-        }
-
+        document.getElementById('acc-email').textContent = user;
+        const purchases = (userDB[user] && userDB[user].purchases) || [];
         const vaultEl = document.getElementById('vault-container');
         if (purchases.length === 0) {
             vaultEl.innerHTML = '<p style="color:var(--muted);">No purchases yet. Browse the library to get started.</p>';
@@ -1786,16 +1713,18 @@
 
     // ─────────────── INIT ───────────────
     function init() {
-        // Sidebar filters don't depend on product data
+        // Home default: bestsellers
+        filterHome('bestseller', document.querySelector('.chip.active'));
+        // Collections
+        renderCollections();
+        // Shop + sidebar
+        renderShop(BOOKS, 'all');
         renderSidebar();
-        // Cart/checkout default hidden state
+        // Cart default
         document.getElementById('active-cart').style.display = 'none';
         document.getElementById('empty-cart').style.display = 'none';
         document.getElementById('checkout-active').style.display = 'none';
         document.getElementById('checkout-empty').style.display = 'none';
-        // Load real data from Firestore (falls back to sample data if empty/unreachable)
-        loadBooks();
-        loadCategories();
     }
 
     init();
