@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LuminaBooks — Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+<style>
+    :root {
+        --ink:#0d1b2a; --amber:#f5a623; --ivory:#faf8f3; --ivory-mid:#f0ece2;
+        --text:#1a2634; --muted:#6b7e91; --border:#ddd8cc; --danger:#e84545; --success:#22a898;
+    }
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:'Inter',system-ui,sans-serif;background:var(--ivory);color:var(--text);line-height:1.6;}
+    .wrap{max-width:980px;margin:0 auto;padding:2.5rem 1.5rem;}
+    h1{font-family:'Playfair Display',serif;font-size:1.9rem;color:var(--ink);margin-bottom:0.25rem;}
+    .sub{color:var(--muted);font-size:0.88rem;margin-bottom:2rem;}
+    .card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:1.75rem;margin-bottom:1.75rem;}
+    .card h2{font-size:1.1rem;color:var(--ink);margin-bottom:1.1rem;}
+    label{display:block;font-size:0.78rem;font-weight:600;color:var(--muted);margin-bottom:0.3rem;}
+    input,select,textarea{width:100%;padding:0.6rem 0.8rem;border:1.5px solid var(--border);border-radius:8px;font-size:0.88rem;outline:none;font-family:inherit;}
+    input:focus,select:focus,textarea:focus{border-color:var(--amber);}
+    .field{margin-bottom:1rem;}
+    .row2{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
+    button{cursor:pointer;border:none;border-radius:8px;font-weight:700;font-size:0.85rem;padding:0.7rem 1.3rem;}
+    .btn-primary{background:var(--amber);color:var(--ink);}
+    .btn-danger{background:var(--danger);color:#fff;}
+    .btn-ghost{background:var(--ivory-mid);color:var(--text);}
+    table{width:100%;border-collapse:collapse;font-size:0.85rem;}
+    th{text-align:left;padding:0.6rem;border-bottom:2px solid var(--border);color:var(--muted);font-size:0.75rem;text-transform:uppercase;}
+    td{padding:0.6rem;border-bottom:1px solid var(--border);vertical-align:middle;}
+    td img{width:40px;height:40px;border-radius:6px;object-fit:cover;}
+    .login-box{max-width:380px;margin:6rem auto;background:#fff;border:1px solid var(--border);border-radius:12px;padding:2rem;}
+    .hidden{display:none;}
+    .msg{font-size:0.82rem;margin-top:0.5rem;}
+    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;}
+</style>
+</head>
+<body>
+
+<!-- LOGIN GATE -->
+<div id="login-screen" class="login-box">
+    <h1 style="margin-bottom:0.5rem;">Admin Login</h1>
+    <p class="sub">Owner access only — this page is not linked anywhere on the public site.</p>
+    <div class="field"><label>Email</label><input type="email" id="admin-email" placeholder="you@yourdomain.com"></div>
+    <div class="field"><label>Password</label><input type="password" id="admin-pass" placeholder="••••••••"></div>
+    <button class="btn-primary" style="width:100%;" onclick="adminLogin()">Sign In</button>
+    <div class="msg" id="login-msg"></div>
+</div>
+
+<!-- ADMIN DASHBOARD -->
+<div id="dashboard" class="wrap hidden">
+    <div class="topbar">
+        <div>
+            <h1>LuminaBooks Admin</h1>
+            <p class="sub" id="who"></p>
+        </div>
+        <button class="btn-ghost" onclick="adminLogout()">Sign Out</button>
+    </div>
+
+    <!-- ADD / EDIT PRODUCT -->
+    <div class="card">
+        <h2 id="product-form-title">Add Product</h2>
+        <input type="hidden" id="p-id">
+        <div class="row2">
+            <div class="field"><label>Title</label><input id="p-title" placeholder="Book title"></div>
+            <div class="field"><label>Author</label><input id="p-author" placeholder="Author name"></div>
+        </div>
+        <div class="row2">
+            <div class="field"><label>Price (₹)</label><input id="p-price" type="number" placeholder="499"></div>
+            <div class="field"><label>Category</label><select id="p-category"></select></div>
+        </div>
+        <div class="field"><label>Tags (comma-separated, e.g. bestseller,new)</label><input id="p-tags" placeholder="bestseller, new, top-rated"></div>
+        <div class="field"><label>Cover Image URL</label><input id="p-img" placeholder="https://..."></div>
+        <div class="field"><label>PDF File Link (Firebase Storage URL, added after upload)</label><input id="p-pdf" placeholder="https://..."></div>
+        <div style="display:flex; gap:0.75rem;">
+            <button class="btn-primary" onclick="saveProduct()">Save Product</button>
+            <button class="btn-ghost" onclick="resetProductForm()">Clear</button>
+        </div>
+        <div class="msg" id="product-msg"></div>
+    </div>
+
+    <!-- PRODUCT LIST -->
+    <div class="card">
+        <h2>All Products</h2>
+        <table>
+            <thead><tr><th></th><th>Title</th><th>Author</th><th>Category</th><th>Price</th><th></th></tr></thead>
+            <tbody id="product-rows"></tbody>
+        </table>
+    </div>
+
+    <!-- ADD / EDIT CATEGORY -->
+    <div class="card">
+        <h2 id="cat-form-title">Add Category</h2>
+        <input type="hidden" id="c-slug-original">
+        <div class="row2">
+            <div class="field"><label>Slug (unique id, e.g. "tech")</label><input id="c-slug" placeholder="tech"></div>
+            <div class="field"><label>Display Name</label><input id="c-title" placeholder="Coding & Tech"></div>
+        </div>
+        <div class="field"><label>Description</label><input id="c-desc" placeholder="Short description shown on the Collections page"></div>
+        <div class="field"><label>Cover Image URL</label><input id="c-img" placeholder="https://..."></div>
+        <div style="display:flex; gap:0.75rem;">
+            <button class="btn-primary" onclick="saveCategory()">Save Category</button>
+            <button class="btn-ghost" onclick="resetCategoryForm()">Clear</button>
+        </div>
+        <div class="msg" id="cat-msg"></div>
+    </div>
+
+    <!-- CATEGORY LIST -->
+    <div class="card">
+        <h2>All Categories</h2>
+        <table>
+            <thead><tr><th></th><th>Slug</th><th>Name</th><th></th></tr></thead>
+            <tbody id="cat-rows"></tbody>
+        </table>
+    </div>
+
+    <!-- ORDERS -->
+    <div class="card">
+        <h2>Recent Orders</h2>
+        <table>
+            <thead><tr><th>Email</th><th>Items</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+            <tbody id="order-rows"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // ── SAME FIREBASE CONFIG AS YOUR MAIN SITE ──
+    const firebaseConfig = {
+        apiKey: "YOUR_API_KEY",
+        authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+        projectId: "YOUR_PROJECT_ID",
+        storageBucket: "YOUR_PROJECT_ID.appspot.com",
+        messagingSenderId: "YOUR_SENDER_ID",
+        appId: "YOUR_APP_ID"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // ── ACCESS CONTROL ──
+    // Only this email is allowed into the dashboard, even if someone else
+    // signs in with a valid Firebase account. Change this to YOUR email.
+    const ADMIN_EMAIL = "owner@yourdomain.com";
+
+    auth.onAuthStateChanged(u => {
+        if (u && u.email === ADMIN_EMAIL) {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+            document.getElementById('who').textContent = "Signed in as " + u.email;
+            loadProducts();
+            loadCategories();
+            loadOrders();
+        } else if (u) {
+            document.getElementById('login-msg').textContent = 'This account is not authorized for admin access.';
+            auth.signOut();
+        } else {
+            document.getElementById('login-screen').classList.remove('hidden');
+            document.getElementById('dashboard').classList.add('hidden');
+        }
+    });
+
+    function adminLogin() {
+        const email = document.getElementById('admin-email').value.trim();
+        const pass = document.getElementById('admin-pass').value.trim();
+        auth.signInWithEmailAndPassword(email, pass)
+            .catch(err => document.getElementById('login-msg').textContent = err.message);
+    }
+    function adminLogout() { auth.signOut(); }
+
+    // ── PRODUCTS ──
+    async function loadProducts() {
+        const catSel = document.getElementById('p-category');
+        const catSnap = await db.collection('categories').get();
+        catSel.innerHTML = catSnap.docs.map(d => `<option value="${d.id}">${d.data().title || d.id}</option>`).join('');
+
+        const snap = await db.collection('products').get();
+        document.getElementById('product-rows').innerHTML = snap.docs.map(d => {
+            const p = d.data();
+            return `<tr>
+                <td><img src="${p.img||''}" onerror="this.style.display='none'"></td>
+                <td>${p.title}</td>
+                <td>${p.author}</td>
+                <td>${p.collection}</td>
+                <td>₹${p.price}</td>
+                <td>
+                    <button class="btn-ghost" onclick='editProduct("${d.id}")'>Edit</button>
+                    <button class="btn-danger" onclick='deleteProduct("${d.id}")'>Delete</button>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    async function saveProduct() {
+        const id = document.getElementById('p-id').value;
+        const data = {
+            title: document.getElementById('p-title').value.trim(),
+            author: document.getElementById('p-author').value.trim(),
+            price: Number(document.getElementById('p-price').value),
+            collection: document.getElementById('p-category').value,
+            tags: document.getElementById('p-tags').value.split(',').map(t => t.trim()).filter(Boolean),
+            img: document.getElementById('p-img').value.trim(),
+            pdfUrl: document.getElementById('p-pdf').value.trim()
+        };
+        if (!data.title || !data.author || !data.price) {
+            document.getElementById('product-msg').textContent = 'Please fill title, author, and price.';
+            return;
+        }
+        try {
+            if (id) await db.collection('products').doc(id).set(data, { merge: true });
+            else await db.collection('products').add(data);
+            document.getElementById('product-msg').style.color = 'var(--success)';
+            document.getElementById('product-msg').textContent = 'Saved!';
+            resetProductForm();
+            loadProducts();
+        } catch (e) {
+            document.getElementById('product-msg').style.color = 'var(--danger)';
+            document.getElementById('product-msg').textContent = e.message;
+        }
+    }
+
+    async function editProduct(id) {
+        const doc = await db.collection('products').doc(id).get();
+        const p = doc.data();
+        document.getElementById('p-id').value = id;
+        document.getElementById('p-title').value = p.title || '';
+        document.getElementById('p-author').value = p.author || '';
+        document.getElementById('p-price').value = p.price || '';
+        document.getElementById('p-category').value = p.collection || '';
+        document.getElementById('p-tags').value = (p.tags || []).join(', ');
+        document.getElementById('p-img').value = p.img || '';
+        document.getElementById('p-pdf').value = p.pdfUrl || '';
+        document.getElementById('product-form-title').textContent = 'Edit Product';
+        window.scrollTo({top:0, behavior:'smooth'});
+    }
+
+    function resetProductForm() {
+        ['p-id','p-title','p-author','p-price','p-tags','p-img','p-pdf'].forEach(id => document.getElementById(id).value = '');
+        document.getElementById('product-form-title').textContent = 'Add Product';
+        document.getElementById('product-msg').textContent = '';
+    }
+
+    async function deleteProduct(id) {
+        if (!confirm('Delete this product permanently?')) return;
+        await db.collection('products').doc(id).delete();
+        loadProducts();
+    }
+
+    // ── CATEGORIES ──
+    async function loadCategories() {
+        const snap = await db.collection('categories').get();
+        document.getElementById('cat-rows').innerHTML = snap.docs.map(d => {
+            const c = d.data();
+            return `<tr>
+                <td><img src="${c.img||''}" onerror="this.style.display='none'"></td>
+                <td>${d.id}</td>
+                <td>${c.title || ''}</td>
+                <td>
+                    <button class="btn-ghost" onclick='editCategory("${d.id}")'>Edit</button>
+                    <button class="btn-danger" onclick='deleteCategory("${d.id}")'>Delete</button>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    async function saveCategory() {
+        const slug = document.getElementById('c-slug').value.trim();
+        const data = {
+            title: document.getElementById('c-title').value.trim(),
+            desc: document.getElementById('c-desc').value.trim(),
+            img: document.getElementById('c-img').value.trim()
+        };
+        if (!slug || !data.title) {
+            document.getElementById('cat-msg').textContent = 'Please fill slug and name.';
+            return;
+        }
+        try {
+            await db.collection('categories').doc(slug).set(data, { merge: true });
+            document.getElementById('cat-msg').style.color = 'var(--success)';
+            document.getElementById('cat-msg').textContent = 'Saved!';
+            resetCategoryForm();
+            loadCategories();
+            loadProducts(); // refresh category dropdown
+        } catch (e) {
+            document.getElementById('cat-msg').style.color = 'var(--danger)';
+            document.getElementById('cat-msg').textContent = e.message;
+        }
+    }
+
+    async function editCategory(slug) {
+        const doc = await db.collection('categories').doc(slug).get();
+        const c = doc.data();
+        document.getElementById('c-slug').value = slug;
+        document.getElementById('c-title').value = c.title || '';
+        document.getElementById('c-desc').value = c.desc || '';
+        document.getElementById('c-img').value = c.img || '';
+        document.getElementById('cat-form-title').textContent = 'Edit Category';
+        window.scrollTo({top:0, behavior:'smooth'});
+    }
+
+    function resetCategoryForm() {
+        ['c-slug','c-title','c-desc','c-img'].forEach(id => document.getElementById(id).value = '');
+        document.getElementById('cat-form-title').textContent = 'Add Category';
+        document.getElementById('cat-msg').textContent = '';
+    }
+
+    async function deleteCategory(slug) {
+        if (!confirm('Delete this category permanently?')) return;
+        await db.collection('categories').doc(slug).delete();
+        loadCategories();
+    }
+
+    // ── ORDERS (read-only view) ──
+    async function loadOrders() {
+        const snap = await db.collection('orders').orderBy('createdAt', 'desc').limit(50).get();
+        document.getElementById('order-rows').innerHTML = snap.docs.map(d => {
+            const o = d.data();
+            const date = o.createdAt ? o.createdAt.toDate().toLocaleString() : '—';
+            return `<tr>
+                <td>${o.email||''}</td>
+                <td>${(o.items||[]).length} item(s)</td>
+                <td>₹${o.amount||0}</td>
+                <td>${o.status||''}</td>
+                <td>${date}</td>
+            </tr>`;
+        }).join('');
+    }
+</script>
+</body>
+</html>
