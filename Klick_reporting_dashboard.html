@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Brand Performance Console - Offline Tool</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <!-- Babel Standalone CDN -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- PapaParse for CSV Parser -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+  <style>
+    /* Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #020617;
+      color: #f1f5f9;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* Custom Scrollbar Styles */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #020617;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+  </style>
+
+  <script>
+    // Tailwind Config
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            slate: {
+              950: '#020617',
+              900: '#0f172a',
+              800: '#1e293b',
+              700: '#334155',
+              600: '#475569',
+              500: '#64748b'
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+
+  <div id="root"></div>
+
+  <!-- React Components Code -->
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const BRANDS = [
+      { key: 'eat', name: 'EAT' },
+      { key: 'aiza', name: 'AIZA' },
+      { key: 'sofetch', name: 'SOFETCH' },
+      { key: 'lyh', name: 'LYH' },
+      { key: 'cai', name: 'CAI' },
+      { key: 'oneempire', name: 'ONE EMPIRE' },
+      { key: 'indewild', name: 'INDEWILD' }
+    ];
+
+    const MONTH_NAMES = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    // Helper functions
+    function cleanNum(val) {
+      if (val === undefined || val === null) return 0;
+      if (typeof val === 'number') return val;
+      const str = String(val).trim();
+      if (!str || str === '-' || str.toLowerCase() === 'n/a' || str === 'NaN') return 0;
+      const cleaned = str.replace(/[^\d.-]/g, '');
+      const parsed = parseFloat(cleaned);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+
+    function formatRevenue(value) {
+      return '₹' + Number(value).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    }
+
+    function formatCompactRevenue(value) {
+      const n = Number(value);
+      const sign = n < 0 ? '-' : '';
+      const abs = Math.abs(n);
+      if (abs >= 10000000) return sign + '₹' + (abs / 10000000).toFixed(1) + 'Cr';
+      if (abs >= 100000) return sign + '₹' + (abs / 100000).toFixed(1) + 'L';
+      if (abs >= 1000) return sign + '₹' + (abs / 1000).toFixed(1) + 'K';
+      return sign + '₹' + abs.toFixed(0);
+    }
+
+    function monthKeyToLabel(key) {
+      if (!key || !key.includes('-')) return key;
+      const [y, m] = key.split('-');
+      const monthIdx = parseInt(m, 10) - 1;
+      const monthName = MONTH_NAMES[monthIdx];
+      if (!monthName) return key;
+      return monthName.slice(0, 3) + ' ' + y;
+    }
+
+    function periodToLabel(period, granularity) {
+      if (granularity === 'weekly') {
+        if (!period.includes('-W')) {
+          if (period.includes('(')) {
+            const parts = period.split(' ');
+            const datePart = parts[0];
+            const rangePart = parts.slice(1).join(' ').replace(/[()]/g, '');
+            if (datePart.includes('-')) {
+              const [y, m] = datePart.split('-');
+              const monthIdx = parseInt(m, 10) - 1;
+              const monthName = MONTH_NAMES[monthIdx] || '';
+              const shortMonth = monthName ? monthName.slice(0, 3) : m;
+              return shortMonth + ' ' + y + ' (Days ' + rangePart + ')';
+            }
+          }
+          return period;
+        }
+        const [y, w] = period.split('-W');
+        return 'Week ' + parseInt(w, 10) + ', ' + y;
+      }
+      return monthKeyToLabel(period);
+    }
+
+    // -------------------------------------------------------------
+    // App Main Entry Component
+    // -------------------------------------------------------------
+    function App() {
+      const [activeTab, setActiveTab] = useState('bik');
+      const [monthlyRevenue, setMonthlyRevenue] = useState({
+        eat: {}, aiza: {}, sofetch: {}, lyh: {}, cai: {}, oneempire: {}, indewild: {}
+      });
+      const [flowsConfig, setFlowsConfig] = useState({
+        eat: { granularity: 'monthly', entries: [] },
+        aiza: { granularity: 'monthly', entries: [] },
+        sofetch: { granularity: 'monthly', entries: [] },
+        lyh: { granularity: 'monthly', entries: [] },
+        cai: { granularity: 'monthly', entries: [] },
+        oneempire: { granularity: 'monthly', entries: [] },
+        indewild: { granularity: 'monthly', entries: [] }
+      });
+
+      const now = new Date();
+      const currentMonthKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+
+      useEffect(() => {
+        // Load target revenues
+        const savedRev = localStorage.getItem('brandConsoleMonthlyRevenue');
+        if (savedRev) {
+          setMonthlyRevenue(JSON.parse(savedRev));
+        } else {
+          // Default data
+          const emptyRev = { eat: {}, aiza: {}, sofetch: {}, lyh: {}, cai: {}, oneempire: {}, indewild: {} };
+          BRANDS.forEach(b => {
+            for (let i = 5; i >= 0; i--) {
+              const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+              const mkey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+              emptyRev[b.key][mkey] = Math.floor(Math.random() * (450000 - 80000)) + 80000;
+            }
+          });
+          setMonthlyRevenue(emptyRev);
+          localStorage.setItem('brandConsoleMonthlyRevenue', JSON.stringify(emptyRev));
+        }
+
+        // Load flow settings
+        const savedFlows = localStorage.getItem('brandConsoleFlowsData');
+        if (savedFlows) {
+          setFlowsConfig(JSON.parse(savedFlows));
+        }
+      }, []);
+
+      const saveMonthlyRevenue = (brand, monthKey, revenue) => {
+        setMonthlyRevenue(prev => {
+          const updated = {
+            ...prev,
+            [brand]: { ...prev[brand], [monthKey]: revenue }
+          };
+          localStorage.setItem('brandConsoleMonthlyRevenue', JSON.stringify(updated));
+          return updated;
+        });
+      };
+
+      const deleteMonthlyRevenue = (brand, monthKey) => {
+        setMonthlyRevenue(prev => {
+          const updatedBrandData = { ...prev[brand] };
+          delete updatedBrandData[monthKey];
+          const updated = { ...prev, [brand]: updatedBrandData };
+          localStorage.setItem('brandConsoleMonthlyRevenue', JSON.stringify(updated));
+          return updated;
+        });
+      };
+
+      const setFlowsGranularity = (brand, granularity) => {
+        setFlowsConfig(prev => {
+          const updated = {
+            ...prev,
+            [brand]: { ...prev[brand], granularity }
+          };
+          localStorage.setItem('brandConsoleFlowsData', JSON.stringify(updated));
+          return updated;
+        });
+      };
+
+      const saveFlowEntry = (brand, entry) => {
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        const newEntry = { id, ...entry };
+        setFlowsConfig(prev => {
+          const updated = {
+            ...prev,
+            [brand]: {
+              ...prev[brand],
+              entries: [...prev[brand].entries, newEntry]
+            }
+          };
+          localStorage.setItem('brandConsoleFlowsData', JSON.stringify(updated));
+          return updated;
+        });
+      };
+
+      const deleteFlowEntry = (brand, id) => {
+        setFlowsConfig(prev => {
+          const updated = {
+            ...prev,
+            [brand]: {
+              ...prev[brand],
+              entries: prev[brand].entries.filter(e => e.id !== id)
+            }
+          };
+          localStorage.setItem('brandConsoleFlowsData', JSON.stringify(updated));
+          return updated;
+        });
+      };
+
+      // Trigger Lucide icons on tab switch
+      useEffect(() => {
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      }, [activeTab]);
+
+      const renderActiveTab = () => {
+        switch (activeTab) {
+          case 'bik':
+            return <BIKAnalysis />;
+          case 'bitespeed':
+            return <BitespeedSuite />;
+          case 'klaviyo':
+            return <KlaviyoFlowHub />;
+          case 'limechat':
+            return <LimechatReportHub />;
+          case 'aiza':
+            return <AizaSuite />;
+          case 'klaviyomonthly':
+            return <KlaviyoMonthlyRollup />;
+          case 'config':
+            return (
+              <GlobalSettings
+                monthlyRevenue={monthlyRevenue}
+                saveMonthlyRevenue={saveMonthlyRevenue}
+                deleteMonthlyRevenue={deleteMonthlyRevenue}
+                flowsConfig={flowsConfig}
+                saveFlowEntry={saveFlowEntry}
+                deleteFlowEntry={deleteFlowEntry}
+                setFlowsGranularity={setFlowsGranularity}
+              />
+            );
+          default:
+            return <BIKAnalysis />;
+        }
+      };
+
+      return (
+        <div className="flex h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden">
+          {/* SIDEBAR */}
+          <aside className="w-80 bg-slate-950 border-r border-slate-800 p-6 flex flex-col h-screen shrink-0">
+            <div className="mb-8 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                <i data-lucide="flame" className="w-6 h-6 text-white"></i>
+              </div>
+              <div>
+                <h1 className="text-lg font-bold text-white tracking-wide leading-tight">Brand Console</h1>
+                <p className="text-xs text-slate-500 font-medium">Unified Performance Console</p>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-1 pr-1">
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider px-3 mb-2">Workspaces</p>
+              <nav className="space-y-1">
+                {[
+                  { id: 'bik', label: 'BIK.ai Analysis', icon: 'bar-chart-2', color: 'text-indigo-400' },
+                  { id: 'bitespeed', label: 'Bitespeed Suite', icon: 'message-square', color: 'text-emerald-400' },
+                  { id: 'klaviyo', label: 'Klaviyo Flow Hub', icon: 'trending-up', color: 'text-blue-400' },
+                  { id: 'limechat', label: 'Limechat Report Hub', icon: 'headphones', color: 'text-amber-400' },
+                  { id: 'aiza', label: 'AIZA (WebEngage) Suite', icon: 'zap', color: 'text-rose-400' },
+                  { id: 'klaviyomonthly', label: 'Klaviyo Monthly Rollup', icon: 'calendar', color: 'text-sky-400' }
+                ].map(item => {
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveTab(item.id)}
+                      className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-between group ${
+                        isActive ? 'bg-indigo-600 text-white shadow-md font-bold' : 'hover:bg-slate-900 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <i data-lucide={item.icon} className={`w-4 h-4 ${isActive ? 'text-white' : item.color}`}></i>
+                        <span>{item.label}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </nav>
+
+              {/* Current targets widget */}
+              <div className="mt-8 pt-6 border-t border-slate-900">
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider px-3 mb-3 flex items-center gap-1">
+                  <i data-lucide="award" className="w-3.5 h-3.5 text-indigo-400"></i>
+                  Current Monthly Targets
+                </p>
+                <div className="space-y-2 px-3">
+                  {BRANDS.map(b => {
+                    const rev = monthlyRevenue[b.key]?.[currentMonthKey];
+                    return (
+                      <div key={b.key} className="flex items-center justify-between text-xs py-1 hover:bg-slate-900/50 rounded px-1 transition-colors">
+                        <span className="text-slate-400 font-medium">{b.name}</span>
+                        {rev !== undefined && rev !== null ? (
+                          <span className="font-semibold text-emerald-400 font-mono">{formatCompactRevenue(rev)}</span>
+                        ) : (
+                          <span className="text-slate-600 italic font-mono">-</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-auto pt-6 border-t border-slate-900">
+              <button
+                onClick={() => setActiveTab('config')}
+                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-3 group ${
+                  activeTab === 'config' ? 'bg-slate-800 text-white font-bold' : 'hover:bg-slate-900 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <i data-lucide="settings" className="w-4 h-4 text-slate-400"></i>
+                <span>Global Settings</span>
+              </button>
+              <div className="mt-4 text-[10px] text-slate-600 font-mono space-y-0.5 px-3">
+                <div>System Status: Portable & Offline</div>
+                <div>Storage Mode: LocalStorage</div>
+              </div>
+            </div>
+          </aside>
+
+          {/* MAIN CONTENT AREA */}
+          <main className="flex-1 h-screen bg-slate-950 p-8 overflow-y-auto">
+            <div className="max-w-7xl mx-auto h-full">
+              {renderActiveTab()}
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+    // -------------------------------------------------------------
+    // Global Settings Tab Component
+    // -------------------------------------------------------------
+    function GlobalSettings({
+      monthlyRevenue,
+      saveMonthlyRevenue,
+      deleteMonthlyRevenue,
+      flowsConfig,
+      saveFlowEntry,
+      deleteFlowEntry,
+      setFlowsGranularity
+    }) {
+      const thisYear = new Date().getFullYear();
+      const thisMonth = new Date().getMonth() + 1;
+
+      const [historyVisible, setHistoryVisible] = useState({});
+      const [flowsVisible, setFlowsVisible] = useState({});
+      const [showBulkPaste, setShowBulkPaste] = useState({});
+      const [bulkPasteText, setBulkPasteText] = useState({});
+
+      const [inputMonth, setInputMonth] = useState({});
+      const [inputYear, setInputYear] = useState({});
+      const [inputRevenue, setInputRevenue] = useState({});
+
+      const [flowName, setFlowName] = useState({});
+      const [flowMonth, setFlowMonth] = useState({});
+      const [flowYear, setFlowYear] = useState({});
+      const [flowWeek, setFlowWeek] = useState({});
+      const [flowRevenue, setFlowRevenue] = useState({});
+
+      const [successMsg, setSuccessMsg] = useState('');
+
+      useEffect(() => {
+        const initVal = {};
+        const yearVal = {};
+        const blank = {};
+        const weekVal = {};
+        BRANDS.forEach(b => {
+          initVal[b.key] = thisMonth;
+          yearVal[b.key] = thisYear;
+          blank[b.key] = '';
+          weekVal[b.key] = '1 to 7';
+        });
+        setInputMonth(initVal);
+        setInputYear(yearVal);
+        setInputRevenue(blank);
+        setFlowMonth(initVal);
+        setFlowYear(yearVal);
+        setFlowWeek(weekVal);
+        setFlowName(blank);
+        setFlowRevenue(blank);
+      }, []);
+
+      const triggerNotification = (msg) => {
+        setSuccessMsg(msg);
+        setTimeout(() => setSuccessMsg(''), 2500);
+      };
+
+      const handleAddRev = (bKey) => {
+        const revVal = parseFloat(inputRevenue[bKey]);
+        if (isNaN(revVal) || revVal < 0) {
+          alert("Please enter a valid target revenue number.");
+          return;
+        }
+        const mKey = (inputYear[bKey] || thisYear) + '-' + String(inputMonth[bKey] || thisMonth).padStart(2, '0');
+        saveMonthlyRevenue(bKey, mKey, revVal);
+        setInputRevenue(prev => ({ ...prev, [bKey]: '' }));
+        triggerNotification(`Updated target revenue successfully for ${bKey.toUpperCase()}!`);
+      };
+
+      const handleAddFlowSingle = (bKey) => {
+        const name = (flowName[bKey] || '').trim();
+        const rev = parseFloat(flowRevenue[bKey]);
+        const config = flowsConfig[bKey] || { granularity: 'monthly', entries: [] };
+        
+        if (!name) {
+          alert("Please enter a flow name.");
+          return;
+        }
+        if (isNaN(rev) || rev < 0) {
+          alert("Please enter a valid revenue amount.");
+          return;
+        }
+
+        let period = '';
+        if (config.granularity === 'weekly') {
+          const wkPeriod = flowWeek[bKey] || '1 to 7';
+          const mm = String(flowMonth[bKey] || thisMonth).padStart(2, '0');
+          const yy = flowYear[bKey] || thisYear;
+          period = `${yy}-${mm} (${wkPeriod})`;
+        } else {
+          period = (flowYear[bKey] || thisYear) + '-' + String(flowMonth[bKey] || thisMonth).padStart(2, '0');
+        }
+
+        saveFlowEntry(bKey, { name, period, granularity: config.granularity, revenue: rev });
+        setFlowName(prev => ({ ...prev, [bKey]: '' }));
+        setFlowRevenue(prev => ({ ...prev, [bKey]: '' }));
+        triggerNotification(`Recorded entry "${name}" successfully!`);
+      };
+
+      const handleBulkImport = (bKey) => {
+        const text = (bulkPasteText[bKey] || '').trim();
+        if (!text) {
+          alert("Please paste data rows in Excel spreadsheet column format first.");
+          return;
+        }
+        const config = flowsConfig[bKey] || { granularity: 'monthly', entries: [] };
+        
+        let fallbackPeriod = '';
+        if (config.granularity === 'weekly') {
+          const wkPeriod = flowWeek[bKey] || '1 to 7';
+          const mm = String(flowMonth[bKey] || thisMonth).padStart(2, '0');
+          const yy = flowYear[bKey] || thisYear;
+          fallbackPeriod = `${yy}-${mm} (${wkPeriod})`;
+        } else {
+          fallbackPeriod = (flowYear[bKey] || thisYear) + '-' + String(flowMonth[bKey] || thisMonth).padStart(2, '0');
+        }
+
+        const lines = text.split('\n');
+        let addedCount = 0;
+        const errorLines = [];
+
+        lines.forEach((line, idx) => {
+          const trimmed = line.trim();
+          if (!trimmed) return;
+          let parts = trimmed.split('\t');
+          if (parts.length < 2) parts = trimmed.split(',');
+
+          if (parts.length < 2) {
+            errorLines.push(`Row ${idx + 1}: Found invalid structure.`);
+            return;
+          }
+
+          const name = parts[0].trim();
+          const rawRev = parts[1].trim();
+          let period = parts[2] ? parts[2].trim() : '';
+
+          if (!name) {
+            errorLines.push(`Row ${idx+1}: Empty name.`);
+            return;
+          }
+
+          const rev = cleanNum(rawRev);
+          if (isNaN(rev) || rev < 0) {
+            errorLines.push(`Row ${idx+1}: Invalid revenue.`);
+            return;
+          }
+
+          if (!period) period = fallbackPeriod;
+
+          saveFlowEntry(bKey, { name, period, granularity: config.granularity, revenue: rev });
+          addedCount++;
+        });
+
+        setBulkPasteText(prev => ({ ...prev, [bKey]: '' }));
+        setShowBulkPaste(prev => ({ ...prev, [bKey]: false }));
+        triggerNotification(`Imported ${addedCount} entries!`);
+        if (errorLines.length > 0) {
+          alert(`Completed with issues:\n${errorLines.slice(0,5).join('\n')}`);
+        }
+      };
+
+      return (
+        <div className="space-y-6 max-w-5xl mx-auto">
+          <header className="border-b border-slate-800 pb-5 flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                Global Settings & Database Targets
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">
+                Configure brand target revenues and track specific flow performance entries.
+              </p>
+            </div>
+            {successMsg && (
+              <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 px-4 py-1.5 rounded-lg text-xs font-semibold">
+                ✓ {successMsg}
+              </div>
+            )}
+          </header>
+
+          <div className="space-y-6">
+            {BRANDS.map(brand => {
+              const brandData = monthlyRevenue[brand.key] || {};
+              const sortedEntries = Object.entries(brandData).sort((a,b) => a[0].localeCompare(b[0]));
+              const brandFlows = flowsConfig[brand.key] || { granularity: 'monthly', entries: [] };
+              const sortedFlows = [...brandFlows.entries].sort((a,b) => b.period.localeCompare(a.period) || a.name.localeCompare(b.name));
+
+              return (
+                <div key={brand.key} className="bg-slate-900 border border-slate-800/80 rounded-xl p-5 space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-800/50">
+                    <h3 className="text-sm font-extrabold text-white tracking-wider uppercase">{brand.name} Target Console</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end text-xs">
+                    <div>
+                      <label className="block font-semibold text-slate-400 mb-1.5">Month</label>
+                      <select
+                        value={inputMonth[brand.key] || thisMonth}
+                        onChange={(e) => setInputMonth(prev => ({ ...prev, [brand.key]: parseInt(e.target.value) }))}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-300 font-semibold focus:outline-none"
+                      >
+                        {MONTH_NAMES.map((m, idx) => (
+                          <option key={m} value={idx + 1}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-400 mb-1.5">Year</label>
+                      <select
+                        value={inputYear[brand.key] || thisYear}
+                        onChange={(e) => setInputYear(prev => ({ ...prev, [brand.key]: parseInt(e.target.value) }))}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-300 font-semibold focus:outline-none"
+                      >
+                        {Array.from({ length: 6 }, (_, i) => thisYear - 3 + i).map(y => (
+                          <option key={y} value={y}>{y}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-400 mb-1.5">Target (INR)</label>
+                      <input
+                        type="number"
+                        value={inputRevenue[brand.key] || ''}
+                        onChange={(e) => setInputRevenue(prev => ({ ...prev, [brand.key]: e.target.value }))}
+                        placeholder="INR"
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-300 font-mono focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <button
+                      onClick={() => handleAddRev(brand.key)}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded-lg cursor-pointer transition-all"
+                    >
+                      Add/Update Target
+                    </button>
+                  </div>
+
+                  <div className="flex gap-4 text-xs pt-1.5">
+                    <button
+                      onClick={() => setHistoryVisible(prev => ({ ...prev, [brand.key]: !prev[brand.key] }))}
+                      className="text-indigo-400 font-semibold hover:underline cursor-pointer"
+                    >
+                      {historyVisible[brand.key] ? 'Hide Targets History' : 'Show Targets History'}
+                    </button>
+                    <button
+                      onClick={() => setFlowsVisible(prev => ({ ...prev, [brand.key]: !prev[brand.key] }))}
+                      className="text-emerald-400 font-semibold hover:underline cursor-pointer"
+                    >
+                      {flowsVisible[brand.key] ? 'Hide Flow Tracker Settings' : 'Show Flow Tracker Settings'}
+                    </button>
+                  </div>
+
+                  {/* Past targets list */}
+                  {historyVisible[brand.key] && (
+                    <div className="bg-slate-950/40 p-4 border border-slate-800/50 rounded-lg text-xs">
+                      {sortedEntries.length === 0 ? (
+                        <div className="text-slate-500 italic py-2 text-center">No targets recorded.</div>
+                      ) : (
+                        <div className="space-y-1">
+                          {sortedEntries.map(([mKey, revVal]) => (
+                            <div key={mKey} className="flex justify-between items-center py-1.5 border-b border-slate-800/40">
+                              <span className="font-semibold text-slate-300">{monthKeyToLabel(mKey)}</span>
+                              <div className="flex items-center gap-3">
+                                <span className="font-mono text-emerald-400 font-bold">{formatRevenue(revVal)}</span>
+                                <button
+                                  onClick={() => deleteMonthlyRevenue(brand.key, mKey)}
+                                  className="text-rose-500 hover:text-rose-400 cursor-pointer"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Flow Tracker Panel */}
+                  {flowsVisible[brand.key] && (
+                    <div className="bg-slate-950/50 p-4 border border-slate-800/50 rounded-lg space-y-4 text-xs">
+                      <div className="flex justify-between items-center pb-2 border-b border-slate-800/50">
+                        <span className="font-bold text-slate-300 uppercase">Flow Configuration</span>
+                        <div className="flex items-center gap-2">
+                          <span>Granularity:</span>
+                          <select
+                            value={brandFlows.granularity}
+                            onChange={(e) => setFlowsGranularity(brand.key, e.target.value)}
+                            className="bg-slate-950 border border-slate-800 text-slate-300 px-2 py-0.5 rounded font-semibold cursor-pointer"
+                          >
+                            <option value="monthly">Monthly Periods</option>
+                            <option value="weekly">Weekly Weeks</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Single vs Bulk selectors */}
+                      <div className="flex justify-end gap-2 text-[10px] font-bold">
+                        <button
+                          type="button"
+                          onClick={() => setShowBulkPaste(prev => ({ ...prev, [brand.key]: false }))}
+                          className={`px-2.5 py-1 rounded border cursor-pointer ${!showBulkPaste[brand.key] ? 'bg-indigo-600/20 border-indigo-500 text-indigo-400' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
+                        >
+                          Single Entry Form
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowBulkPaste(prev => ({ ...prev, [brand.key]: true }))}
+                          className={`px-2.5 py-1 rounded border cursor-pointer ${showBulkPaste[brand.key] ? 'bg-indigo-600/20 border-indigo-500 text-indigo-400' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
+                        >
+                          Bulk Paste Excel Rows
+                        </button>
+                      </div>
+
+                      {showBulkPaste[brand.key] ? (
+                        <div className="space-y-3">
+                          <textarea
+                            rows={4}
+                            value={bulkPasteText[brand.key] || ''}
+                            onChange={(e) => setBulkPasteText(prev => ({ ...prev, [brand.key]: e.target.value }))}
+                            placeholder="Flow Name [Tab] Revenue [Tab] Period (optional)&#10;Welcome Series&#9;185000&#10;Abandoned Cart&#9;320000"
+                            className="w-full bg-slate-950 border border-slate-800 rounded p-2.5 font-mono text-xs focus:outline-none focus:border-indigo-500"
+                          />
+                          <button
+                            onClick={() => handleBulkImport(brand.key)}
+                            className="bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 font-bold cursor-pointer"
+                          >
+                            Process Bulk Import
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                          <div>
+                            <label className="block text-slate-500 font-semibold mb-1">Flow Name</label>
+                            <input
+                              type="text"
+                              value={flowName[brand.key] || ''}
+                              onChange={(e) => setFlowName(prev => ({ ...prev, [brand.key]: e.target.value }))}
+                              placeholder="Welcome Flow"
+                              className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 focus:outline-none text-slate-200 font-semibold"
+                            />
+                          </div>
+                          {brandFlows.granularity === 'weekly' ? (
+                            <>
+                              <div>
+                                <label className="block text-slate-500 font-semibold mb-1">Week Period</label>
+                                <select
+                                  value={flowWeek[brand.key] || '1 to 7'}
+                                  onChange={(e) => setFlowWeek(prev => ({ ...prev, [brand.key]: e.target.value }))}
+                                  className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 focus:outline-none font-semibold cursor-pointer"
+                                >
+                                  <option value="1 to 7">1 to 7</option>
+                                  <option value="8 to 14">8 to 14</option>
+                                  <option value="15 to 21">15 to 21</option>
+                                  <option value="21 to 31">21 to 31</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-slate-500 font-semibold mb-1">Month/Year</label>
+                                <div className="flex gap-1.5">
+                                  <select
+                                    value={flowMonth[brand.key] || thisMonth}
+                                    onChange={(e) => setFlowMonth(prev => ({ ...prev, [brand.key]: parseInt(e.target.value) }))}
+                                    className="bg-slate-950 border border-slate-800 rounded p-1.5 focus:outline-none w-1/2 font-semibold cursor-pointer"
+                                  >
+                                    {MONTH_NAMES.map((m, i) => <option key={m} value={i+1}>{m.slice(0,3)}</option>)}
+                                  </select>
+                                  <select
+                                    value={flowYear[brand.key] || thisYear}
+                                    onChange={(e) => setFlowYear(prev => ({ ...prev, [brand.key]: parseInt(e.target.value) }))}
+                                    className="bg-slate-950 border border-slate-800 rounded p-1.5 focus:outline-none w-1/2 font-semibold cursor-pointer"
+                                  >
+                                    {Array.from({ length: 6 }, (_, i) => thisYear - 3 + i).map(y => <option key={y} value={y}>{y}</option>)}
+                                  </select>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div>
+                                <label className="block text-slate-500 font-semibold mb-1">Month</label>
+                                <select
+                                  value={flowMonth[brand.key] || thisMonth}
+                                  onChange={(e) => setFlowMonth(prev => ({ ...prev, [brand.key]: parseInt(e.target.value) }))}
+                                  className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 focus:outline-none font-semibold cursor-pointer"
+                                >
+                                  {MONTH_NAMES.map((m, i) => <option key={m} value={i+1}>{m.slice(0,3)}</option>)}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-slate-500 font-semibold mb-1">Year</label>
+                                <select
+                                  value={flowYear[brand.key] || thisYear}
+                                  onChange={(e) => setFlowYear(prev => ({ ...prev, [brand.key]: parseInt(e.target.value) }))}
+                                  className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 focus:outline-none font-semibold cursor-pointer"
+                                >
+                                  {Array.from({ length: 6 }, (_, i) => thisYear - 3 + i).map(y => <option key={y} value={y}>{y}</option>)}
+                                </select>
+                              </div>
+                            </>
+                          )}
+                          <div>
+                            <button
+                              onClick={() => handleAddFlowSingle(brand.key)}
+                              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold p-1.5 rounded cursor-pointer transition-all"
+                            >
+                              Add Flow Entry
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Flow entries list table */}
+                      <div className="pt-2">
+                        {sortedFlows.length === 0 ? (
+                          <div className="text-slate-500 italic py-1 text-center">No entries recorded.</div>
+                        ) : (
+                          <div className="border border-slate-800 rounded overflow-hidden">
+                            <table className="min-w-full text-xs">
+                              <thead className="bg-slate-950 border-b border-slate-800 text-slate-400 font-semibold">
+                                <tr>
+                                  <th className="px-4 py-2 text-left">Flow Name</th>
+                                  <th className="px-4 py-2 text-left">Period</th>
+                                  <th className="px-4 py-2 text-right">Revenue</th>
+                                  <th className="px-4 py-2 text-center w-12">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-800/40 text-slate-300">
+                                {sortedFlows.map(e => (
+                                  <tr key={e.id} className="hover:bg-slate-950/40">
+                                    <td className="px-4 py-2 font-semibold">{e.name}</td>
+                                    <td className="px-4 py-2 text-slate-400">{periodToLabel(e.period, e.granularity)}</td>
+                                    <td className="px-4 py-2 text-right font-mono text-emerald-400 font-bold">{formatRevenue(e.revenue)}</td>
+                                    <td className="px-4 py-2 text-center">
+                                      <button onClick={() => deleteFlowEntry(brand.key, e.id)} className="text-rose-500 cursor-pointer">Delete</button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // -------------------------------------------------------------
+    // Tab components: BIK Whatsapp Analysis
+    // -------------------------------------------------------------
+    function BIKAnalysis() {
+      const [rawData, setRawData] = useState('');
+      const [processedJourneys, setProcessedJourneys] = useState([]);
+      const [processedCampaigns, setProcessedCampaigns] = useState([]);
+      const [mode, setMode] = useState('bik');
+
+      const processData = () => {
+        if (!rawData.trim()) return;
+        const lines = rawData.split('\n');
+        const journeys = [];
+        const campaigns = [];
+
+        lines.forEach(line => {
+          const cols = line.split('\t');
+          if (cols.length >= 6) {
+            const name = cols[0]?.trim();
+            const rev = cleanNum(cols[4]);
+            if (name && name !== 'Flow Name' && name !== 'Campaign Name') {
+              if (mode === 'bik') {
+                journeys.push({
+                  name,
+                  delivered: cleanNum(cols[1]),
+                  reads: cleanNum(cols[2]),
+                  clicks: cleanNum(cols[3]),
+                  revenue: rev,
+                  orders: cleanNum(cols[5])
+                });
+              } else {
+                campaigns.push({
+                  name,
+                  channel: cols[1] || 'WA',
+                  readRate: cleanNum(cols[2]),
+                  ctr: cleanNum(cols[3]),
+                  revenue: rev,
+                  spends: cleanNum(cols[5])
+                });
+              }
+            }
+          }
+        });
+
+        if (mode === 'bik') setProcessedJourneys(journeys);
+        else setProcessedCampaigns(campaigns);
+      };
+
+      return (
+        <div className="space-y-6">
+          <header className="border-b border-slate-800 pb-4">
+            <h2 className="text-xl font-bold">BIK.ai Whatsapp Dashboard Utility</h2>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => { setMode('bik'); setRawData(''); setProcessedJourneys([]); }}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${mode === 'bik' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-900 border border-slate-800 text-slate-400'}`}
+              >
+                Journeys Analysis
+              </button>
+              <button
+                onClick={() => { setMode('bik_campaigns'); setRawData(''); setProcessedCampaigns([]); }}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${mode === 'bik_campaigns' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-900 border border-slate-800 text-slate-400'}`}
+              >
+                Campaigns Report
+              </button>
+            </div>
+          </header>
+
+          <div className="bg-slate-900 border border-slate-800 p-5 rounded-xl space-y-4">
+            <label className="block text-xs font-bold text-slate-400 uppercase">Paste BIK Dashboard Rows</label>
+            <textarea
+              rows={6}
+              value={rawData}
+              onChange={(e) => setRawData(e.target.value)}
+              placeholder="Paste data columns here from spreadsheet..."
+              className="w-full bg-slate-950 border border-slate-800 rounded p-3 font-mono text-xs focus:outline-none focus:border-indigo-500"
+            />
+            <button
+              onClick={processData}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-xs font-bold cursor-pointer transition-all"
+            >
+              Parse & Clean Dashboard
+            </button>
+          </div>
+
+          {processedJourneys.length > 0 && (
+            <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40">
+              <table className="min-w-full text-xs">
+                <thead className="bg-slate-950 text-slate-400">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Flow Name</th>
+                    <th className="px-4 py-3 text-right">Delivered</th>
+                    <th className="px-4 py-3 text-right">Read %</th>
+                    <th className="px-4 py-3 text-right">Revenue</th>
+                    <th className="px-4 py-3 text-right">Orders</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-300">
+                  {processedJourneys.map((j, i) => (
+                    <tr key={i} className="hover:bg-slate-950/40">
+                      <td className="px-4 py-2.5 font-semibold text-white">{j.name}</td>
+                      <td className="px-4 py-2.5 text-right font-mono">{j.delivered.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right font-mono">{j.delivered > 0 ? ((j.reads/j.delivered)*100).toFixed(1)+'%' : '0%'}</td>
+                      <td className="px-4 py-2.5 text-right font-mono text-emerald-400 font-bold">{formatRevenue(j.revenue)}</td>
+                      <td className="px-4 py-2.5 text-right font-mono">{j.orders.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {processedCampaigns.length > 0 && (
+            <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40">
+              <table className="min-w-full text-xs">
+                <thead className="bg-slate-950 text-slate-400">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Campaign Name</th>
+                    <th className="px-4 py-3 text-left">Channel</th>
+                    <th className="px-4 py-3 text-right">Read Rate</th>
+                    <th className="px-4 py-3 text-right">CTR</th>
+                    <th className="px-4 py-3 text-right">Revenue</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-300">
+                  {processedCampaigns.map((c, i) => (
+                    <tr key={i} className="hover:bg-slate-950/40">
+                      <td className="px-4 py-2.5 font-semibold text-white">{c.name}</td>
+                      <td className="px-4 py-2.5 text-left">{c.channel}</td>
+                      <td className="px-4 py-2.5 text-right font-mono">{c.readRate}%</td>
+                      <td className="px-4 py-2.5 text-right font-mono">{c.ctr}%</td>
+                      <td className="px-4 py-2.5 text-right font-mono text-emerald-400 font-bold">{formatRevenue(c.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // -------------------------------------------------------------
+    // Bitespeed Suite Component
+    // -------------------------------------------------------------
+    function BitespeedSuite() {
+      const [rawData, setRawData] = useState('');
+      const [items, setItems] = useState([]);
+
+      const handleParse = () => {
+        if (!rawData.trim()) return;
+        const lines = rawData.split('\n');
+        const list = [];
+        lines.forEach(line => {
+          const cols = line.split('\t');
+          if (cols.length >= 5) {
+            const name = cols[0]?.trim();
+            if (name && name !== 'Flow Name' && name !== 'Campaign Name') {
+              list.push({
+                name,
+                delivered: cleanNum(cols[1]),
+                reads: cleanNum(cols[2]),
+                clicks: cleanNum(cols[3]),
+                revenue: cleanNum(cols[4])
+              });
+            }
+          }
+        });
+        setItems(list);
+      };
+
+      return (
+        <div className="space-y-6">
+          <header className="border-b border-slate-800 pb-4">
+            <h2 className="text-xl font-bold">Bitespeed Analytics Suite</h2>
+          </header>
+          <div className="bg-slate-900 border border-slate-800 p-5 rounded-xl space-y-4">
+            <textarea
+              rows={5}
+              value={rawData}
+              onChange={(e) => setRawData(e.target.value)}
+              placeholder="Paste Bitespeed spreadsheet columns..."
+              className="w-full bg-slate-950 border border-slate-800 rounded p-3 font-mono text-xs focus:outline-none focus:border-indigo-500"
+            />
+            <button onClick={handleParse} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-xs font-bold cursor-pointer">
+              Parse Bitespeed Rows
+            </button>
+          </div>
+
+          {items.length > 0 && (
+            <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40">
+              <table className="min-w-full text-xs">
+                <thead className="bg-slate-950 text-slate-400">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Flow/Campaign</th>
+                    <th className="px-4 py-3 text-right">Delivered</th>
+                    <th className="px-4 py-3 text-right">Reads</th>
+                    <th className="px-4 py-3 text-right">Revenue</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-300">
+                  {items.map((it, i) => (
+                    <tr key={i} className="hover:bg-slate-950/40">
+                      <td className="px-4 py-2.5 font-semibold text-white">{it.name}</td>
+                      <td className="px-4 py-2.5 text-right font-mono">{it.delivered.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right font-mono">{it.reads.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right font-mono text-emerald-400 font-bold">{formatRevenue(it.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // -------------------------------------------------------------
+    // Klaviyo Flow Hub Component
+    // -------------------------------------------------------------
+    function KlaviyoFlowHub() {
+      const [rawData, setRawData] = useState('');
+      const [treeData, setTreeData] = useState(null);
+
+      const handleParse = () => {
+        if (!rawData.trim()) return;
+        const lines = rawData.split('\n');
+        const summary = {};
+
+        lines.forEach((line, idx) => {
+          if (idx === 0) return;
+          const cols = line.split('\t');
+          if (cols.length >= 6) {
+            const flowName = cols[1]?.trim();
+            const dateStr = cols[0]?.trim();
+            if (!flowName || !dateStr) return;
+
+            const revenue = cleanNum(cols[5]);
+            const clicks = cleanNum(cols[4]);
+            
+            if (!summary[flowName]) {
+              summary[flowName] = { revenue: 0, clicks: 0, weeks: {} };
+            }
+            summary[flowName].revenue += revenue;
+            summary[flowName].clicks += clicks;
+          }
+        });
+        setTreeData(summary);
+      };
+
+      return (
+        <div className="space-y-6">
+          <header className="border-b border-slate-800 pb-4">
+            <h2 className="text-xl font-bold">Klaviyo Flow & Campaigns Hub</h2>
+          </header>
+          <div className="bg-slate-900 border border-slate-800 p-5 rounded-xl space-y-4">
+            <textarea
+              rows={5}
+              value={rawData}
+              onChange={(e) => setRawData(e.target.value)}
+              placeholder="Paste Klaviyo daywise metrics here..."
+              className="w-full bg-slate-950 border border-slate-800 rounded p-3 font-mono text-xs focus:outline-none focus:border-indigo-500"
+            />
+            <button onClick={handleParse} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-xs font-bold cursor-pointer">
+              Parse Klaviyo Metrics
+            </button>
+          </div>
+
+          {treeData && (
+            <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40 text-xs p-4">
+              <h3 className="font-bold text-sm text-slate-300 mb-3">Aggregated Klaviyo Flows</h3>
+              <div className="divide-y divide-slate-800">
+                {Object.entries(treeData).map(([name, data]) => (
+                  <div key={name} className="flex justify-between py-2 items-center">
+                    <span className="font-semibold text-slate-200">{name}</span>
+                    <div className="flex gap-4 font-mono">
+                      <span>Clicks: <b className="text-slate-400">{data.clicks}</b></span>
+                      <span>Revenue: <b className="text-emerald-400">{formatRevenue(data.revenue)}</b></span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // -------------------------------------------------------------
+    // Limechat Report Hub Component
+    // -------------------------------------------------------------
+    function LimechatReportHub() {
+      const [rawData, setRawData] = useState('');
+      const [tree, setTree] = useState(null);
+
+      const handleParse = () => {
+        if (!rawData.trim()) return;
+        const lines = rawData.split('\n');
+        const flows = {};
+
+        lines.forEach(line => {
+          const cols = line.split('\t');
+          if (cols.length >= 6) {
+            const flowName = cols[0]?.trim();
+            if (flowName && flowName !== 'Flow Name' && !flowName.toLowerCase().includes('total')) {
+              const delivered = cleanNum(cols[2]);
+              const revenue = cleanNum(cols[5]);
+
+              if (!flows[flowName]) {
+                flows[flowName] = { delivered: 0, revenue: 0 };
+              }
+              flows[flowName].delivered += delivered;
+              flows[flowName].revenue += revenue;
+            }
+          }
+        });
+        setTree(flows);
+      };
+
+      return (
+        <div className="space-y-6">
+          <header className="border-b border-slate-800 pb-4">
+            <h2 className="text-xl font-bold">Limechat Multi-Period Analytics</h2>
+          </header>
+          <div className="bg-slate-900 border border-slate-800 p-5 rounded-xl space-y-4">
+            <textarea
+              rows={5}
+              value={rawData}
+              onChange={(e) => setRawData(e.target.value)}
+              placeholder="Paste Limechat spreadsheet rows..."
+              className="w-full bg-slate-950 border border-slate-800 rounded p-3 font-mono text-xs focus:outline-none focus:border-indigo-500"
+            />
+            <button onClick={handleParse} className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2 rounded-lg text-xs font-bold cursor-pointer">
+              Parse Limechat Logs
+            </button>
+          </div>
+
+          {tree && (
+            <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40 text-xs p-4">
+              <h3 className="font-bold text-sm text-slate-300 mb-3">Aggregated Limechat Flows</h3>
+              <div className="divide-y divide-slate-800">
+                {Object.entries(tree).map(([name, d]) => (
+                  <div key={name} className="flex justify-between py-2 items-center">
+                    <span className="font-semibold text-slate-200">{name}</span>
+                    <div className="flex gap-4 font-mono">
+                      <span>Delivered: <b className="text-slate-400">{d.delivered}</b></span>
+                      <span>Revenue: <b className="text-emerald-400">{formatRevenue(d.revenue)}</b></span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // -------------------------------------------------------------
+    // AIZA Suite Component
+    // -------------------------------------------------------------
+    function AizaSuite() {
+      const [rawData, setRawData] = useState('');
+      const [grouped, setGrouped] = useState(null);
+
+      const handleParse = () => {
+        if (!rawData.trim()) return;
+        const lines = rawData.split('\n');
+        const summary = {};
+
+        lines.forEach((line, idx) => {
+          if (idx === 0) return;
+          const cols = line.split('\t');
+          if (cols.length >= 6) {
+            const journeyName = cols[2]?.trim() || cols[0]?.trim();
+            if (journeyName && journeyName !== 'Journey Name') {
+              const delivered = cleanNum(cols[3]);
+              const revenue = cleanNum(cols[5]);
+
+              if (!summary[journeyName]) {
+                summary[journeyName] = { delivered: 0, revenue: 0 };
+              }
+              summary[journeyName].delivered += delivered;
+              summary[journeyName].revenue += revenue;
+            }
+          }
+        });
+        setGrouped(summary);
+      };
+
+      return (
+        <div className="space-y-6">
+          <header className="border-b border-slate-800 pb-4">
+            <h2 className="text-xl font-bold">AIZA WebEngage Report Suite</h2>
+          </header>
+          <div className="bg-slate-900 border border-slate-800 p-5 rounded-xl space-y-4">
+            <textarea
+              rows={5}
+              value={rawData}
+              onChange={(e) => setRawData(e.target.value)}
+              placeholder="Paste AIZA daywise data matrix..."
+              className="w-full bg-slate-950 border border-slate-800 rounded p-3 font-mono text-xs focus:outline-none focus:border-indigo-500"
+            />
+            <button onClick={handleParse} className="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2 rounded-lg text-xs font-bold cursor-pointer">
+              Parse WebEngage Data
+            </button>
+          </div>
+
+          {grouped && (
+            <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40 text-xs p-4">
+              <h3 className="font-bold text-sm text-slate-300 mb-3">Grouped Journeys Summary</h3>
+              <div className="divide-y divide-slate-800">
+                {Object.entries(grouped).map(([name, data]) => (
+                  <div key={name} className="flex justify-between py-2 items-center">
+                    <span className="font-semibold text-slate-200">{name}</span>
+                    <div className="flex gap-4 font-mono">
+                      <span>Delivered: <b className="text-slate-400">{data.delivered}</b></span>
+                      <span>Revenue: <b className="text-emerald-400">{formatRevenue(data.revenue)}</b></span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // -------------------------------------------------------------
+    // Klaviyo Monthly Rollup Component
+    // -------------------------------------------------------------
+    function KlaviyoMonthlyRollup() {
+      const [rawData, setRawData] = useState('');
+      const [aggregated, setAggregated] = useState(null);
+
+      const handleParse = () => {
+        if (!rawData.trim()) return;
+        const parsed = Papa.parse(rawData, { header: true, skipEmptyLines: true });
+        if (parsed.errors.length > 0 && parsed.data.length === 0) {
+          alert("Could not parse CSV format correctly.");
+          return;
+        }
+
+        const totals = {};
+        parsed.data.forEach(row => {
+          const name = row['Flow Name'] || row['flow name'] || Object.values(row)[0];
+          if (!name) return;
+
+          const cleanName = String(name).trim();
+          const revenue = cleanNum(row['Revenue'] || row['revenue'] || row['Placed Order Revenue']);
+
+          if (!totals[cleanName]) {
+            totals[cleanName] = 0;
+          }
+          totals[cleanName] += revenue;
+        });
+
+        setAggregated(totals);
+      };
+
+      return (
+        <div className="space-y-6">
+          <header className="border-b border-slate-800 pb-4">
+            <h2 className="text-xl font-bold">Klaviyo Monthly Rollup Aggregator</h2>
+          </header>
+          <div className="bg-slate-900 border border-slate-800 p-5 rounded-xl space-y-4">
+            <textarea
+              rows={5}
+              value={rawData}
+              onChange={(e) => setRawData(e.target.value)}
+              placeholder="Paste raw Klaviyo flows CSV data with 'Flow Name' and 'Revenue' columns..."
+              className="w-full bg-slate-950 border border-slate-800 rounded p-3 font-mono text-xs focus:outline-none focus:border-indigo-500"
+            />
+            <button onClick={handleParse} className="bg-sky-600 hover:bg-sky-700 text-white px-5 py-2 rounded-lg text-xs font-bold cursor-pointer">
+              Aggregate flows
+            </button>
+          </div>
+
+          {aggregated && (
+            <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40 text-xs p-4">
+              <h3 className="font-bold text-sm text-slate-300 mb-3">Rollup Flow Revenue Matrix</h3>
+              <div className="divide-y divide-slate-800">
+                {Object.entries(aggregated).map(([name, rev]) => (
+                  <div key={name} className="flex justify-between py-2 items-center">
+                    <span className="font-semibold text-slate-200">{name}</span>
+                    <span className="font-mono text-emerald-400 font-bold">{formatRevenue(rev)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Render App
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+
+</body>
+</html>
